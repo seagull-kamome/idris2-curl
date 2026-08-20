@@ -1,0 +1,12 @@
+package curl
+
+version = 0.1.0
+authors = "idris2-curl minimal reimplementation"
+brief   = "Minimal, dependency-free libcurl FFI bindings for Idris2"
+
+sourcedir = "src"
+
+depends = base, contrib
+
+modules = Network.Curl.Raw,
+          Network.Curl.Types

@@ -26,12 +26,14 @@ C codegen backend, not just the default Chez backend.
   declaration (currently `idris2curl_compat.h`, see `doc/`)
 - `examples/` — small standalone programs that exercise the bindings
   end to end, used to verify they build/link/run on Chez, upstream
-  RefC, and `idris2-rc-cg`'s `rc2` backend
+  RefC, and `idris2-rc-cg`'s `rc2` backend -- except `GetInfo.idr`,
+  which is RefC/rc2-only (see `doc/variadic-getinfo.md`)
 - `doc/` — implementation deep-dives, meant to let a future session
   regain context without re-deriving the design (currently:
   `const-char-ffi.md` for why a `const char *`-returning libcurl
   function needs a `csrc/` shim and three separate `%foreign` targets,
-  one per backend)
+  one per backend; `variadic-getinfo.md` for why `curl_easy_getinfo`
+  has no Chez binding at all)
 
 ## サブエージェント
 - ファイル調査、コードベース調査、定型実装はサブエージェントに移譲する。
@@ -89,11 +91,22 @@ To build `examples/*.idr` against the library (rather than the plain
 Chez backend above, which only type-checks `package.ipkg` itself),
 install the library into a local prefix first -- the default Idris2
 package location lives in a read-only nix store here. `csrc/` (see
-below) must be on the include path for both backends:
+below) must be on the include path for every backend:
 ```sh
 IDRIS2_PREFIX="$(pwd)/.local-install" idris2 --install package.ipkg
 export IDRIS2_CFLAGS="-Icsrc"
 IDRIS2_PREFIX="$(pwd)/.local-install" idris2 -p curl -o get examples/Get.idr
+```
+`examples/GetInfo.idr` is RefC/rc2-only -- it has no Chez `%foreign`
+target at all (`doc/variadic-getinfo.md`) and fails to build here.
+
+Against plain upstream `idris2 --cg refc` (needs `IDRIS2_LDLIBS` set
+by hand -- rc2's own automatic `-l<lib>` derivation, see below, hasn't
+been upstreamed):
+```sh
+export IDRIS2_CFLAGS="-Icsrc"
+export IDRIS2_LDLIBS="$(pkg-config --libs libcurl)"
+IDRIS2_PREFIX="$(pwd)/.local-install" idris2 --cg refc -p curl -o get_refc examples/Get.idr
 ```
 
 Against `idris2-rc-cg`'s rc2 backend (requires that repo checked out
@@ -108,14 +121,16 @@ export IDRIS2_LDFLAGS="$(pkg-config --libs-only-L libcurl)"
 ```
 `-lcurl` itself no longer needs `IDRIS2_LDLIBS` set by hand under rc2
 -- see `doc/const-char-ffi.md`'s own "Linker caveat" section for the
-full story (still needed under plain upstream `--cg refc`). Only the
-`-L` search path above (nix's libcurl isn't on the linker's default
-path) and, at *run* time, `LD_LIBRARY_PATH` pointing at the same
-directory are still needed by hand.
+full story. Only the `-L` search path above (nix's libcurl isn't on
+the linker's default path) and, at *run* time, `LD_LIBRARY_PATH`
+pointing at the same directory are still needed by hand under either
+static backend.
 
 See `doc/const-char-ffi.md` for why `curl_easy_strerror` (and any
 future `const char *`-returning binding) needs `csrc/`'s own shim and
-three separate `%foreign` targets, one per backend.
+three separate `%foreign` targets, one per backend, and
+`doc/variadic-getinfo.md` for why `curl_easy_getinfo` has no Chez
+binding at all.
 
 ## Conventions
 

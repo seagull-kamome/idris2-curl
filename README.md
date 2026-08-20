@@ -22,13 +22,25 @@ backend Idris2 ships with.
 
 ## Status
 
-Bound so far, enough to drive a synchronous `curl_easy` GET request:
-`curl_global_init`, `curl_global_cleanup`, `curl_easy_init`,
-`curl_easy_cleanup`, `curl_easy_setopt` (string- and long-valued
-options), `curl_easy_perform`, `curl_easy_strerror`. See
-`src/Network/Curl/Raw.idr` for the full list and
-`src/Network/Curl/Types.idr` for the `CURLoption`/`CURLcode` constants
-currently defined.
+Bound so far, enough to drive a synchronous `curl_easy` GET request
+with custom headers and inspect the result: `curl_global_init`,
+`curl_global_cleanup`, `curl_easy_init`, `curl_easy_cleanup`,
+`curl_easy_setopt` (string-, long-, and slist-valued options),
+`curl_easy_perform`, `curl_easy_strerror`, `curl_easy_duphandle`,
+`curl_easy_reset`, `curl_easy_getinfo` (string/long/double `CURLINFO`s
+-- RefC/rc2 only, see `doc/variadic-getinfo.md`), `curl_slist_append`,
+`curl_slist_free_all`. See `src/Network/Curl/Raw.idr` for the full
+list and `src/Network/Curl/Types.idr` for the `CURLoption`/`CURLcode`/
+`CURLINFO` constants currently defined.
+
+Being implemented incrementally, working through libcurl's own public
+API surface (`curl_easy_*`, `curl_multi_*`, `curl_url_*`, `curl_mime_*`,
+...) roughly in order of practical usefulness. Notably not bound yet:
+any `CURLOPT_*WRITEFUNCTION`-style callback (passing an Idris function
+as a C function pointer isn't something `System.FFI` supports out of
+the box -- unresolved so far, deliberately deferred rather than worked
+around), the multi/share/mime interfaces, and URL parsing
+(`curl_url_*`).
 
 More of libcurl's own API surface (multi handle, callbacks/write
 functions, more options) gets added incrementally as needed.

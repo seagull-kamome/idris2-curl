@@ -29,8 +29,26 @@ prim__curlEasySetoptString : AnyPtr -> Int -> String -> PrimIO Int
 %foreign "C:curl_easy_setopt,libcurl,curl/curl.h"
 prim__curlEasySetoptLong : AnyPtr -> Int -> Int -> PrimIO Int
 
+-- Same `curl_easy_setopt` C symbol, this overload's own third argument
+-- typed for an object-pointer option (e.g. CURLOPT_HTTPHEADER) whose
+-- value is a `curl_slist *`, not a `String`.
+%foreign "C:curl_easy_setopt,libcurl,curl/curl.h"
+prim__curlEasySetoptSlist : AnyPtr -> Int -> AnyPtr -> PrimIO Int
+
 %foreign "C:curl_easy_perform,libcurl,curl/curl.h"
 prim__curlEasyPerform : AnyPtr -> PrimIO Int
+
+%foreign "C:curl_easy_duphandle,libcurl,curl/curl.h"
+prim__curlEasyDuphandle : AnyPtr -> PrimIO AnyPtr
+
+%foreign "C:curl_easy_reset,libcurl,curl/curl.h"
+prim__curlEasyReset : AnyPtr -> PrimIO ()
+
+%foreign "C:curl_slist_append,libcurl,curl/curl.h"
+prim__curlSlistAppend : AnyPtr -> String -> PrimIO AnyPtr
+
+%foreign "C:curl_slist_free_all,libcurl,curl/curl.h"
+prim__curlSlistFreeAll : AnyPtr -> PrimIO ()
 
 -- curl_easy_strerror returns `const char *`; rc2/RefC's own %foreign
 -- lowering hardcodes CFString as non-const `char *`, which collides
@@ -58,6 +76,26 @@ prim__curlEasyPerform : AnyPtr -> PrimIO Int
          "RefC:idris2curl_easy_strerror,libcurl,idris2curl_compat.h"
          "RC2:idris2curl_easy_strerror,libcurl,idris2curl_compat.h"
 prim__curlEasyStrerror : Int -> PrimIO String
+
+-- curl_easy_getinfo() is variadic (the real C signature takes a
+-- write-through output pointer whose type depends on the CURLINFO);
+-- %foreign can't express that at all, so there's no plain "C:..."
+-- target here -- Chez has no shim to fall back to (see
+-- idris2curl_compat.h's own doc comment on why these three shims can
+-- only exist under static linking), and fails cleanly with "was not
+-- accepted by any backend" at the one call site that actually needs
+-- one, rather than breaking every Chez build of this library.
+%foreign "RefC:idris2curl_getinfo_long,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_getinfo_long,libcurl,idris2curl_compat.h"
+prim__curlEasyGetinfoLong : AnyPtr -> Int -> PrimIO Int
+
+%foreign "RefC:idris2curl_getinfo_string,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_getinfo_string,libcurl,idris2curl_compat.h"
+prim__curlEasyGetinfoString : AnyPtr -> Int -> PrimIO String
+
+%foreign "RefC:idris2curl_getinfo_double,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_getinfo_double,libcurl,idris2curl_compat.h"
+prim__curlEasyGetinfoDouble : AnyPtr -> Int -> PrimIO Double
 
 ||| `CURL_GLOBAL_ALL`, per curl/curl.h.
 curlGlobalAll : Int
@@ -99,3 +137,53 @@ curlEasyPerform h = MkCURLcode <$> primIO (prim__curlEasyPerform h)
 export
 curlEasyStrerror : HasIO io => CURLcode -> io String
 curlEasyStrerror (MkCURLcode c) = primIO (prim__curlEasyStrerror c)
+
+export
+curlEasySetoptSlist : HasIO io => AnyPtr -> CURLoption -> AnyPtr -> io CURLcode
+curlEasySetoptSlist h (MkCURLoption o) v = MkCURLcode <$> primIO (prim__curlEasySetoptSlist h o v)
+
+||| `Nothing` on the same allocation-failure contract as `curlEasyInit`
+||| (`curl_easy_duphandle(3)`).
+export
+curlEasyDuphandle : HasIO io => AnyPtr -> io (Maybe AnyPtr)
+curlEasyDuphandle h = do
+    h' <- primIO (prim__curlEasyDuphandle h)
+    pure $ if prim__nullAnyPtr h' /= 0 then Nothing else Just h'
+
+export
+curlEasyReset : HasIO io => AnyPtr -> io ()
+curlEasyReset h = primIO (prim__curlEasyReset h)
+
+export
+curlEasyGetinfoLong : HasIO io => AnyPtr -> CURLINFO -> io Int
+curlEasyGetinfoLong h (MkCURLINFO i) = primIO (prim__curlEasyGetinfoLong h i)
+
+export
+curlEasyGetinfoString : HasIO io => AnyPtr -> CURLINFO -> io String
+curlEasyGetinfoString h (MkCURLINFO i) = primIO (prim__curlEasyGetinfoString h i)
+
+export
+curlEasyGetinfoDouble : HasIO io => AnyPtr -> CURLINFO -> io Double
+curlEasyGetinfoDouble h (MkCURLINFO i) = primIO (prim__curlEasyGetinfoDouble h i)
+
+||| An empty header list, per `curl_slist_append(3)`'s own contract
+||| that a `NULL` first argument starts a fresh one -- `System.FFI`'s
+||| own `prim__getNullAnyPtr` (`idris2_getNull()`, already provided by
+||| every backend's shared support runtime) gives one directly, no
+||| `csrc/` shim needed for this unlike `curlEasyGetinfo*` above.
+export
+curlSlistEmpty : AnyPtr
+curlSlistEmpty = prim__getNullAnyPtr
+
+||| `list` may itself be `curlSlistEmpty` -- see `curlSlistEmpty`'s own
+||| doc comment. Always returns the (possibly new) list head; the
+||| original `list` handle must not be reused after this call (per
+||| `curl_slist_append(3)`, `list` may have been freed and replaced on
+||| allocation failure).
+export
+curlSlistAppend : HasIO io => AnyPtr -> String -> io AnyPtr
+curlSlistAppend list s = primIO (prim__curlSlistAppend list s)
+
+export
+curlSlistFreeAll : HasIO io => AnyPtr -> io ()
+curlSlistFreeAll list = primIO (prim__curlSlistFreeAll list)

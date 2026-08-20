@@ -39,3 +39,56 @@ curlopt_VERBOSE = MkCURLoption 41 -- CURLOPTTYPE_LONG + 41
 public export
 curlopt_URL : CURLoption
 curlopt_URL = MkCURLoption 10002 -- CURLOPTTYPE_OBJECTPOINT + 2
+
+public export
+curlopt_HTTPHEADER : CURLoption
+curlopt_HTTPHEADER = MkCURLoption 10023 -- CURLOPTTYPE_OBJECTPOINT + 23
+
+||| A libcurl `CURLINFO` -- the value passed as `curl_easy_getinfo`'s
+||| own second argument. Every value below is `CURLINFO_*`'s own
+||| `CURLINFO_STRING`/`CURLINFO_LONG`/`CURLINFO_DOUBLE` type tag (per
+||| curl/curl.h) plus the info's own small ordinal, same construction
+||| as `CURLoption` above. Only the three type tags this module's own
+||| `curlEasyGetinfo*` functions (`Network.Curl.Raw`) support are
+||| represented here -- `CURLINFO_SLIST`/`CURLINFO_OFF_T`/
+||| `CURLINFO_SOCKET`-tagged infos aren't bound yet.
+public export
+record CURLINFO where
+  constructor MkCURLINFO
+  info : Int
+
+public export
+curlinfo_EFFECTIVE_URL : CURLINFO
+curlinfo_EFFECTIVE_URL = MkCURLINFO 1048577 -- CURLINFO_STRING + 1
+
+public export
+curlinfo_RESPONSE_CODE : CURLINFO
+curlinfo_RESPONSE_CODE = MkCURLINFO 2097154 -- CURLINFO_LONG + 2
+
+public export
+curlinfo_TOTAL_TIME : CURLINFO
+curlinfo_TOTAL_TIME = MkCURLINFO 3145731 -- CURLINFO_DOUBLE + 3
+
+public export
+curlinfo_NAMELOOKUP_TIME : CURLINFO
+curlinfo_NAMELOOKUP_TIME = MkCURLINFO 3145732 -- CURLINFO_DOUBLE + 4
+
+public export
+curlinfo_CONNECT_TIME : CURLINFO
+curlinfo_CONNECT_TIME = MkCURLINFO 3145733 -- CURLINFO_DOUBLE + 5
+
+public export
+curlinfo_HEADER_SIZE : CURLINFO
+curlinfo_HEADER_SIZE = MkCURLINFO 2097163 -- CURLINFO_LONG + 11
+
+public export
+curlinfo_REQUEST_SIZE : CURLINFO
+curlinfo_REQUEST_SIZE = MkCURLINFO 2097164 -- CURLINFO_LONG + 12
+
+public export
+curlinfo_CONTENT_TYPE : CURLINFO
+curlinfo_CONTENT_TYPE = MkCURLINFO 1048594 -- CURLINFO_STRING + 18
+
+public export
+curlinfo_REDIRECT_COUNT : CURLINFO
+curlinfo_REDIRECT_COUNT = MkCURLINFO 2097172 -- CURLINFO_LONG + 20

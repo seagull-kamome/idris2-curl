@@ -198,3 +198,58 @@ Eq CURLMSG where
 public export
 curlmsg_DONE : CURLMSG
 curlmsg_DONE = MkCURLMSG 1
+
+||| `curl_mime_init`'s own result, set via `curl_easy_setopt`.
+public export
+curlopt_MIMEPOST : CURLoption
+curlopt_MIMEPOST = MkCURLoption 10269 -- CURLOPTTYPE_OBJECTPOINT + 269
+
+||| Attaches a `curl_share_init` handle to this easy handle, via
+||| `curlEasySetoptSlist h curlopt_SHARE sh`.
+public export
+curlopt_SHARE : CURLoption
+curlopt_SHARE = MkCURLoption 10100 -- CURLOPTTYPE_OBJECTPOINT + 100
+
+||| A libcurl `CURLSHcode` result from the share interface -- a
+||| distinct enum from `CURLcode`/`CURLUcode`/`CURLMcode` in
+||| curl/curl.h itself.
+public export
+record CURLSHcode where
+  constructor MkCURLSHcode
+  code : Int
+
+public export
+Eq CURLSHcode where
+  MkCURLSHcode a == MkCURLSHcode b = a == b
+
+public export
+Show CURLSHcode where
+  show (MkCURLSHcode c) = "CURLSHcode " ++ show c
+
+public export
+curlshe_OK : CURLSHcode
+curlshe_OK = MkCURLSHcode 0
+
+||| A `curl_lock_data` value -- which kind of state to share/unshare
+||| via `curl_share_setopt`'s own `CURLSHOPT_SHARE`/`CURLSHOPT_UNSHARE`.
+||| Only the data types actually useful without a lock/unlock callback
+||| (`CURLSHOPT_LOCKFUNC`/`CURLSHOPT_UNLOCKFUNC`, not bound -- see
+||| `TODO.md`'s own callback entry; libcurl only *requires* one when a
+||| share handle is itself used across multiple threads, which this
+||| repo's own single-threaded examples never do) are represented here.
+public export
+record CurlLockData where
+  constructor MkCurlLockData
+  lockData : Int
+
+public export
+curllockdata_COOKIE : CurlLockData
+curllockdata_COOKIE = MkCurlLockData 2
+
+public export
+curllockdata_DNS : CurlLockData
+curllockdata_DNS = MkCurlLockData 3
+
+public export
+curllockdata_SSL_SESSION : CurlLockData
+curllockdata_SSL_SESSION = MkCurlLockData 4

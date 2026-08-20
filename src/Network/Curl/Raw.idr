@@ -7,6 +7,7 @@ module Network.Curl.Raw
 -- function, no Struct/getField, no derived instances. Just enough to
 -- exercise curl_easy's "init, setopt, perform, cleanup" lifecycle.
 
+import Data.Buffer
 import System.FFI
 
 import Network.Curl.Types
@@ -225,6 +226,78 @@ prim__curlMultimsgEasyHandle : AnyPtr -> PrimIO AnyPtr
 %foreign "RefC:idris2curl_multimsg_result,libcurl,idris2curl_compat.h"
          "RC2:idris2curl_multimsg_result,libcurl,idris2curl_compat.h"
 prim__curlMultimsgResult : AnyPtr -> PrimIO Int
+
+%foreign "C:curl_share_init,libcurl,curl/curl.h"
+prim__curlShareInit : PrimIO AnyPtr
+
+%foreign "C:curl_share_cleanup,libcurl,curl/curl.h"
+prim__curlShareCleanup : AnyPtr -> PrimIO Int
+
+-- curl_share_setopt() is variadic like curl_easy_setopt() above, but
+-- (unlike curl_easy_getinfo/curl_multi_perform's own output-pointer
+-- trouble) every argument here is a plain input value libcurl reads,
+-- never a pointer libcurl writes through -- the same shape
+-- curl_easy_setopt's own three overloads already bind directly and
+-- run correctly on all three backends. Only CURLSHOPT_SHARE/
+-- CURLSHOPT_UNSHARE (an int curl_lock_data value) are bound;
+-- CURLSHOPT_LOCKFUNC/CURLSHOPT_UNLOCKFUNC/CURLSHOPT_USERDATA need a
+-- callback, not bound (see TODO.md).
+%foreign "C:curl_share_setopt,libcurl,curl/curl.h"
+prim__curlShareSetoptInt : AnyPtr -> Int -> Int -> PrimIO Int
+
+-- curl_share_strerror() returns `const char *`, same const-cast
+-- reasoning as curl_easy_strerror above.
+%foreign "C:curl_share_strerror,libcurl,curl/curl.h"
+         "RefC:idris2curl_share_strerror,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_share_strerror,libcurl,idris2curl_compat.h"
+prim__curlShareStrerror : Int -> PrimIO String
+
+%foreign "C:curl_mime_init,libcurl,curl/curl.h"
+prim__curlMimeInit : AnyPtr -> PrimIO AnyPtr
+
+%foreign "C:curl_mime_free,libcurl,curl/curl.h"
+prim__curlMimeFree : AnyPtr -> PrimIO ()
+
+%foreign "C:curl_mime_addpart,libcurl,curl/curl.h"
+prim__curlMimeAddpart : AnyPtr -> PrimIO AnyPtr
+
+%foreign "C:curl_mime_name,libcurl,curl/curl.h"
+prim__curlMimeName : AnyPtr -> String -> PrimIO Int
+
+%foreign "C:curl_mime_filename,libcurl,curl/curl.h"
+prim__curlMimeFilename : AnyPtr -> String -> PrimIO Int
+
+%foreign "C:curl_mime_type,libcurl,curl/curl.h"
+prim__curlMimeType : AnyPtr -> String -> PrimIO Int
+
+-- curl_mime_data()'s own `datasize` (`size_t`, 64-bit) does NOT get
+-- curl/curl.h's own CURL_ZERO_TERMINATED sentinel (`(size_t)-1`) --
+-- deliberately: `-1 : Int` maps to a 32-bit C `int` under the Chez
+-- backend specifically (`Compiler.Scheme.Chez`'s own `cftySpec CFInt
+-- = "int"`; RefC/rc2 both treat `Int` as 64-bit, so this only bites
+-- Chez), and a 32-bit `-1` doesn't sign-extend into a 64-bit
+-- `(size_t)-1` consistently across calling conventions, landing on
+-- some huge-but-wrong value instead -- confirmed directly: this
+-- crashed with "invalid memory reference" under Chez specifically
+-- (libcurl reading `datasize` bytes past a 5-byte string). Switching
+-- the type to `Int64` "fixes" Chez (its own 64-bit two's-complement
+-- bit pattern for -1 is genuinely all-ones everywhere) but isn't
+-- viable either: RefC's own FFI type table has no `Int64` case at
+-- all, crashing with "Unknown FFI type in C backend" at compile time.
+-- `curlMimeData` (Network.Curl.Raw below) sidesteps both problems by
+-- always passing the string's own real byte length
+-- (`Data.Buffer.stringByteLength`) instead of the sentinel -- a small
+-- positive value reads identically whether the backend treats it as
+-- a 32-bit or 64-bit integer, so which one `Int` happens to map to
+-- here stops mattering.
+%foreign "C:curl_mime_data,libcurl,curl/curl.h"
+prim__curlMimeData : AnyPtr -> String -> Int -> PrimIO Int
+
+%foreign "C:curl_mime_filedata,libcurl,curl/curl.h"
+prim__curlMimeFiledata : AnyPtr -> String -> PrimIO Int
+
+%foreign "C:curl_mime_headers,libcurl,curl/curl.h"
+prim__curlMimeHeaders : AnyPtr -> AnyPtr -> Int -> PrimIO Int
 
 ||| `CURL_GLOBAL_ALL`, per curl/curl.h.
 curlGlobalAll : Int
@@ -471,3 +544,97 @@ curlMultiInfoRead m = do
          h <- primIO (prim__curlMultimsgEasyHandle msg)
          result <- primIO (prim__curlMultimsgResult msg)
          pure $ Just (MkCURLMSG what, h, MkCURLcode result)
+
+||| `Nothing` on the same allocation-failure contract as `curlEasyInit`
+||| (`curl_share_init(3)`).
+export
+curlShareInit : HasIO io => io (Maybe AnyPtr)
+curlShareInit = do
+    sh <- primIO prim__curlShareInit
+    pure $ if prim__nullAnyPtr sh /= 0 then Nothing else Just sh
+
+export
+curlShareCleanup : HasIO io => AnyPtr -> io CURLSHcode
+curlShareCleanup sh = MkCURLSHcode <$> primIO (prim__curlShareCleanup sh)
+
+||| Configures `sh` itself to share (`CURLSHOPT_SHARE`) or stop sharing
+||| (`CURLSHOPT_UNSHARE`) one kind of state -- `sh` must still be
+||| attached to each easy handle that should actually use it, via
+||| `curlEasySetoptSlist h curlopt_SHARE sh` (`curlopt_SHARE`,
+||| `Network.Curl.Types`). `share` -- `True` for `CURLSHOPT_SHARE`,
+||| `False` for `CURLSHOPT_UNSHARE` (curl/curl.h's own
+||| `CURLSHOPT_SHARE = 1`, `CURLSHOPT_UNSHARE = 2`, so `1`/`2` isn't
+||| hard-coded here as some unexplained magic number).
+export
+curlShareSetopt : HasIO io => AnyPtr -> (share : Bool) -> CurlLockData -> io CURLSHcode
+curlShareSetopt sh share (MkCurlLockData d) =
+    MkCURLSHcode <$> primIO (prim__curlShareSetoptInt sh (if share then 1 else 2) d)
+
+export
+curlShareStrerror : HasIO io => CURLSHcode -> io String
+curlShareStrerror (MkCURLSHcode c) = primIO (prim__curlShareStrerror c)
+
+||| `Nothing` on the same allocation-failure contract as `curlEasyInit`
+||| (`curl_mime_init(3)`). `h` is the easy handle the resulting mime
+||| structure will eventually be attached to via
+||| `curlEasySetoptSlist h curlopt_MIMEPOST mime` -- required even
+||| though a mime handle isn't tied to any one easy handle's own data,
+||| just used to allocate memory the same way the easy handle itself
+||| does (`curl_mime_init(3)`'s own contract).
+export
+curlMimeInit : HasIO io => AnyPtr -> io (Maybe AnyPtr)
+curlMimeInit h = do
+    mime <- primIO (prim__curlMimeInit h)
+    pure $ if prim__nullAnyPtr mime /= 0 then Nothing else Just mime
+
+||| Only needed if `mime` is never attached via `CURLOPT_MIMEPOST` (or
+||| after removing it again with `curlEasySetoptSlist h curlopt_MIMEPOST
+||| curlSlistEmpty`) -- `curl_easy_cleanup`/`curl_easy_reset` already
+||| free a still-attached mime structure on their own
+||| (`curl_mime_free(3)`).
+export
+curlMimeFree : HasIO io => AnyPtr -> io ()
+curlMimeFree mime = primIO (prim__curlMimeFree mime)
+
+||| `Nothing` on the same allocation-failure contract as `curlEasyInit`
+||| (`curl_mime_addpart(3)`).
+export
+curlMimeAddpart : HasIO io => AnyPtr -> io (Maybe AnyPtr)
+curlMimeAddpart mime = do
+    part <- primIO (prim__curlMimeAddpart mime)
+    pure $ if prim__nullAnyPtr part /= 0 then Nothing else Just part
+
+export
+curlMimeName : HasIO io => AnyPtr -> String -> io CURLcode
+curlMimeName part name = MkCURLcode <$> primIO (prim__curlMimeName part name)
+
+export
+curlMimeFilename : HasIO io => AnyPtr -> String -> io CURLcode
+curlMimeFilename part filename = MkCURLcode <$> primIO (prim__curlMimeFilename part filename)
+
+export
+curlMimeType : HasIO io => AnyPtr -> String -> io CURLcode
+curlMimeType part mimetype = MkCURLcode <$> primIO (prim__curlMimeType part mimetype)
+
+||| Sets `part`'s own data straight from an in-memory `String` --
+||| see `prim__curlMimeData`'s own doc comment for why its own real
+||| UTF-8 byte length (`Data.Buffer.stringByteLength`) is passed
+||| explicitly rather than a "NUL-terminated, compute it yourself"
+||| sentinel, and so no separate length parameter is exposed here.
+export
+curlMimeData : HasIO io => AnyPtr -> String -> io CURLcode
+curlMimeData part data_ = MkCURLcode <$> primIO (prim__curlMimeData part data_ (stringByteLength data_))
+
+export
+curlMimeFiledata : HasIO io => AnyPtr -> String -> io CURLcode
+curlMimeFiledata part filename = MkCURLcode <$> primIO (prim__curlMimeFiledata part filename)
+
+||| `takeOwnership` -- `True` if `headers` should be freed by libcurl
+||| itself once `part`'s own mime structure is freed (`curl_free_all`
+||| is never called by the caller in that case); `False` if the caller
+||| keeps ownership and must `curlSlistFreeAll` it itself afterwards
+||| (`curl_mime_headers(3)`'s own `take_ownership` contract).
+export
+curlMimeHeaders : HasIO io => AnyPtr -> AnyPtr -> (takeOwnership : Bool) -> io CURLcode
+curlMimeHeaders part headers takeOwnership =
+    MkCURLcode <$> primIO (prim__curlMimeHeaders part headers (if takeOwnership then 1 else 0))

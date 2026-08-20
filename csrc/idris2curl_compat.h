@@ -181,4 +181,8 @@ static inline int idris2curl_multimsg_result(void *msg) {
     return msg == NULL ? -1 : (int) ((CURLMsg *) msg)->data.result;
 }
 
+static inline char *idris2curl_share_strerror(int code) {
+    return (char *) curl_share_strerror((CURLSHcode) code);
+}
+
 #endif

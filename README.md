@@ -36,7 +36,9 @@ slist-valued options), `curl_easy_perform`, `curl_easy_strerror`,
 is RefC/rc2 only, same reason as `curl_easy_getinfo`), and enough of
 the `curl_multi_*` interface to drive several concurrent transfers to
 completion on one thread (`curl_multi_perform`/`_wait`/`_info_read` are
-RefC/rc2 only, see `doc/multi-interface.md`). See
+RefC/rc2 only, see `doc/multi-interface.md`), a shared DNS/session
+cache across easy handles (`curl_share_*`), and multipart form uploads
+(`curl_mime_*`) -- both fully bound on all three backends. See
 `src/Network/Curl/Raw.idr` for the
 full list and `src/Network/Curl/Types.idr` for the `CURLoption`/
 `CURLcode`/`CURLINFO`/`CURLUcode`/`CURLUPart` constants currently

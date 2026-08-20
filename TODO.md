@@ -30,13 +30,17 @@ connections -- none needed yet), `curl_multi_fdset`/
 `curl_pushheader_byname`/`curl_pushheader_bynum` (server push, HTTP/2
 only). Add as a concrete need comes up.
 
-## Share/mime interfaces not started
+## `curl_share_*`/`curl_mime_*` coverage is a minimal working subset
 
-`curl_share_*` (sharing state -- cookies, DNS cache, TLS session
-cache -- across multiple easy handles), `curl_mime_*` (multipart form
-data) are entirely unbound. Share interface is independent of the
-callback gap above; mime interface (building a multipart upload body)
-would benefit from resolving it first but doesn't strictly need it.
+Bound: `curl_share_init`/`_cleanup`/`_setopt` (`CURLSHOPT_SHARE`/
+`_UNSHARE` only -- `_LOCKFUNC`/`_UNLOCKFUNC`/`_USERDATA` need a
+callback, see above)/`_strerror`; `curl_mime_init`/`_free`/`_addpart`/
+`_name`/`_filename`/`_type`/`_data`/`_filedata`/`_headers`. Fully bound
+on all three backends -- unlike most of Phase 1/2's own bindings,
+nothing here needs an output-pointer/variadic-argument shim. Not
+bound: `curl_mime_encoder`, `curl_mime_data_cb` (needs a callback),
+`curl_mime_subparts` (nested multipart, no concrete need yet). Add as
+a concrete need comes up.
 
 ## Smaller easy-interface gaps
 

@@ -41,7 +41,11 @@ C codegen backend, not just the default Chez backend.
   for why `curl_version_info` (a real C struct, not a scalar) is bound
   via per-field `csrc/` shims rather than `System.FFI`'s own
   `Struct`/`getField`; `multi-interface.md` for the same output-pointer/
-  no-Chez-binding reasoning applied to `curl_multi_*`)
+  no-Chez-binding reasoning applied to `curl_multi_*`;
+  `int-width-pitfall.md` for why a negative/sentinel `Int` `%foreign`
+  argument (e.g. `CURL_ZERO_TERMINATED`) isn't safe on this project's
+  three backends -- `Int`'s own width differs by backend, and `Int64`
+  isn't a portable fix either)
 - `TODO.md` — open gaps and deferred design decisions (removed once
   implemented and documented elsewhere)
 

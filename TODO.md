@@ -84,6 +84,37 @@ coordinated from the Idris2 side (at the cost of thread-unsafe global
 state in the shim) if a program ends up calling one of these often
 enough for it to matter.
 
+**Tried and rejected**: `System.FFI`/`Prelude.IO`'s own
+`GCAnyPtr`/`onCollectAny` (attach a finalizer -- an ordinary Idris
+`IO ()` action, e.g. one that calls `curl_free` -- to a raw pointer,
+run automatically once the GC reclaims it) looked like a clean fix:
+receive the raw `char *` as a plain `AnyPtr` instead of `String`,
+`onCollectAny ptr (\p => primIO (prim__curlFree p))` to get a
+`GCAnyPtr`, then a second `%foreign` declaration typed to take a
+`GCAnyPtr` argument directly (`Compiler.RC2.Emit`/upstream
+`RefC.idr`/`Compiler.Scheme.Chez` all implement `CFGCPtr`, unwrapping
+it to the real pointer before the call) and read the string back
+(e.g. `idris2_getString, libidris2_support, idris_support.h` retyped
+from its own usual `Ptr String -> String` to `GCAnyPtr -> String`).
+
+Confirmed directly this works correctly on Chez: the finalizer fires
+strictly after the string copy, every time, across repeated runs.
+**Confirmed directly this is broken on both RefC and rc2**: the
+finalizer (`curl_free`) fires *before* the string-reading call
+actually executes -- reproduced consistently across repeated runs on
+both backends, reading back an empty string (RefC) or garbage bytes
+(rc2) instead of the escaped/decoded text. Root cause not
+pinned down further (not clear yet whether this is an rc2-specific
+reference-counting bug or one inherited from upstream RefC's own
+`CFGCPtr` handling -- both are reference-counted backends, unlike
+Chez's own tracing GC, and the symptom looks like the `GCAnyPtr`
+argument's own reference gets dropped -- and its finalizer run -- as
+soon as it's evaluated for the call, not after the call itself
+returns). Given this fails on two of this repo's three target
+backends, not worth pursuing further over the accepted small leak
+above unless a future session narrows down and fixes the underlying
+drop-ordering bug.
+
 ## `curlUrlGet` can't distinguish "empty part" from "curl_url_get failed"
 
 `idris2curl_url_get`'s own collapsed return (`csrc/idris2curl_compat.h`)

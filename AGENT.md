@@ -108,20 +108,28 @@ at the same directory are still needed by hand.
 
 `csrc/idris2curl_compat.h` holds `static inline` shims for the small
 number of libcurl functions returning `const char *`
-(`curl_easy_strerror` so far) -- rc2/RefC's own `%foreign` lowering
-hardcodes `CFString` as non-const `char *`, which collides with rc2's
-own `-Werror` (see `idris2-rc-cg/TODO.md`'s "CFString's hardcoded
-`char *` return type" entry). Chez has no such issue (dynamically
-typed, no C-level qualifier), and can't call the `static inline` shim
-anyway -- it only exists in the header, never as a real symbol in
-`libcurl.so`'s own table, so Chez's own dynamic load would fail with
-"no entry for ...". Each such binding therefore declares *two*
-`%foreign` targets: a plain `"C:curl_easy_strerror,..."` entry Chez
-picks up, and an `"RC2:idris2curl_easy_strerror,..."` entry
-`Compiler.RC2.Emit`'s own `ffiTags` (`["RC2", "RefC", "C"]`, checked in
-that order) picks up instead for the rc2 codegen specifically. See
-`Network.Curl.Raw`'s own `prim__curlEasyStrerror` for the pattern to
-follow for any future `const char *`-returning binding.
+(`curl_easy_strerror` so far) -- both rc2's and upstream RefC's own
+`%foreign` lowering hardcode `CFString` as non-const `char *`, which
+collides with either backend's own `-Werror` (confirmed directly
+against both, not inferred from one -- see `idris2-rc-cg/TODO.md`'s
+"CFString's hardcoded `char *` return type" entry). Chez has no such
+issue (dynamically typed, no C-level qualifier), and can't call the
+`static inline` shim anyway -- it only exists in the header, never as
+a real symbol in `libcurl.so`'s own table, so Chez's own dynamic load
+would fail with "no entry for ...". Each such binding therefore
+declares *three* `%foreign` targets: a plain
+`"C:curl_easy_strerror,..."` entry Chez picks up, an
+`"RefC:idris2curl_easy_strerror,..."` entry plain upstream `idris2
+--cg refc` picks up (its own FFI tags are `["RefC", "C"]`), and an
+`"RC2:idris2curl_easy_strerror,..."` entry `Compiler.RC2.Emit`'s own
+`ffiTags` (`["RC2", "RefC", "C"]`, checked in that order) picks up
+instead for rc2 specifically. Both static-linking backends also need
+`-lcurl` reaching the linker -- rc2 derives it automatically from the
+`%foreign` lib field (`Compiler.RC2.CC`'s own `compileCFile`), but
+plain upstream RefC doesn't, so building with `--cg refc` still needs
+`IDRIS2_LDLIBS`/`LDLIBS` set by hand. See `Network.Curl.Raw`'s own
+`prim__curlEasyStrerror` for the pattern to follow for any future
+`const char *`-returning binding.
 
 ## Conventions
 

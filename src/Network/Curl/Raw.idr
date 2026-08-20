@@ -34,19 +34,28 @@ prim__curlEasyPerform : AnyPtr -> PrimIO Int
 
 -- curl_easy_strerror returns `const char *`; rc2/RefC's own %foreign
 -- lowering hardcodes CFString as non-const `char *`, which collides
--- with -Werror's own -Wdiscarded-qualifiers on a direct binding under
--- rc2 (see idris2-rc-cg/TODO.md; RefC hits the identical wall, though
--- this repo doesn't target it). Chez has no such issue -- dynamically
--- typed, no C-level qualifier to discard -- so only rc2's own binding
--- routes through idris2curl_compat.h's `static inline` shim (zero
--- call overhead: the cast, not a real wrapper call, is the point);
--- Chez keeps calling curl_easy_strerror directly. rc2's own FFI
+-- with both backends' own -Werror -Wdiscarded-qualifiers on a direct
+-- binding (confirmed directly against upstream RefC too, not just
+-- rc2 -- see idris2-rc-cg/TODO.md's "CFString's hardcoded char *
+-- return type" entry). Chez has no such issue -- dynamically typed, no
+-- C-level qualifier to discard -- so only the two static-linking
+-- backends route through idris2curl_compat.h's `static inline` shim
+-- (zero call overhead: the cast, not a real wrapper call, is the
+-- point); Chez keeps calling curl_easy_strerror directly, since the
+-- shim only exists as a real symbol under static linking, never in
+-- libcurl.so's own dynamic-load table. Both static backends need
+-- IDRIS2_LDLIBS="-lcurl" set by hand under plain upstream RefC (only
+-- rc2 derives -l<lib> automatically from the lib field, see
+-- Compiler.RC2.CC's own compileCFile).
+--
+-- Three %foreign targets pick the right one per backend: rc2's own FFI
 -- target tags are `["RC2", "RefC", "C"]` (`Compiler.RC2.Emit`'s own
--- `ffiTags`) checked in that order, so a `"RC2:..."` entry is picked
--- over the plain `"C:..."` one below it purely for the rc2 codegen;
--- Chez's own target list (`["scheme,chez", "scheme", ..., "C"]`) never
--- matches `"RC2"` and falls through to the plain entry instead.
+-- `ffiTags`, checked in that order) so `"RC2:..."` wins there;
+-- upstream RefC's own tags are `["RefC", "C"]` so `"RefC:..."` wins
+-- there; Chez's own target list (`["scheme,chez", "scheme", ..., "C"]`)
+-- matches neither and falls through to the plain `"C:..."` entry.
 %foreign "C:curl_easy_strerror,libcurl,curl/curl.h"
+         "RefC:idris2curl_easy_strerror,libcurl,idris2curl_compat.h"
          "RC2:idris2curl_easy_strerror,libcurl,idris2curl_compat.h"
 prim__curlEasyStrerror : Int -> PrimIO String
 

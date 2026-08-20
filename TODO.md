@@ -15,17 +15,6 @@ response body can only go to libcurl's own default (stdout) or a
 `FILE *` obtained some other way; there's no way yet to capture it into
 an Idris `String`/`Buffer`.
 
-## `curl_version_info` not bound
-
-Returns `curl_version_info_data *`, a real C struct (version numbers,
-feature bitmask, list of supported protocols, SSL/libz version
-strings, ...), not a scalar. Binding it needs either `System.FFI`'s own
-`Struct`/`getField` (untested against this project's three backends --
-`rc2/doc/c-struct-support.md` notes upstream RefC itself doesn't
-support it, only rc2's own later addition does) or a `csrc/` shim per
-field actually needed. `curl_version` (the plain `char *` one-line
-summary) is bound and enough for now.
-
 ## Multi/share/mime interfaces not started
 
 `curl_multi_*` (concurrent/non-blocking transfers), `curl_share_*`

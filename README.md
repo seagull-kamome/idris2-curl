@@ -31,8 +31,10 @@ slist-valued options), `curl_easy_perform`, `curl_easy_strerror`,
 (string/long/double `CURLINFO`s -- RefC/rc2 only, see
 `doc/variadic-getinfo.md`), `curl_slist_append`, `curl_slist_free_all`,
 `curl_easy_escape`, `curl_easy_unescape`, `curl_free`, `curl_version`,
-and the `curl_url_*` URL API (`curl_url_get` is RefC/rc2 only, same
-reason as `curl_easy_getinfo`). See `src/Network/Curl/Raw.idr` for the
+`curl_version_info` (five fields -- RefC/rc2 only, see
+`doc/version-info-struct.md`), and the `curl_url_*` URL API
+(`curl_url_get` is RefC/rc2 only, same reason as `curl_easy_getinfo`).
+See `src/Network/Curl/Raw.idr` for the
 full list and `src/Network/Curl/Types.idr` for the `CURLoption`/
 `CURLcode`/`CURLINFO`/`CURLUcode`/`CURLUPart` constants currently
 defined.

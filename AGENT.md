@@ -28,14 +28,18 @@ C codegen backend, not just the default Chez backend.
   declaration (currently `idris2curl_compat.h`, see `doc/`)
 - `examples/` — small standalone programs that exercise the bindings
   end to end, used to verify they build/link/run on Chez, upstream
-  RefC, and `idris2-rc-cg`'s `rc2` backend -- except `GetInfo.idr` and
-  `UrlGet.idr`, which are RefC/rc2-only (see `doc/variadic-getinfo.md`)
+  RefC, and `idris2-rc-cg`'s `rc2` backend -- except `GetInfo.idr`,
+  `UrlGet.idr`, and `VersionInfo.idr`, which are RefC/rc2-only (see
+  `doc/variadic-getinfo.md`/`doc/version-info-struct.md`)
 - `doc/` — implementation deep-dives, meant to let a future session
   regain context without re-deriving the design (currently:
   `const-char-ffi.md` for why a `const char *`-returning libcurl
   function needs a `csrc/` shim and three separate `%foreign` targets,
   one per backend; `variadic-getinfo.md` for why `curl_easy_getinfo`/
-  `curl_url_get` have no Chez binding at all)
+  `curl_url_get` have no Chez binding at all; `version-info-struct.md`
+  for why `curl_version_info` (a real C struct, not a scalar) is bound
+  via per-field `csrc/` shims rather than `System.FFI`'s own
+  `Struct`/`getField`)
 - `TODO.md` — open gaps and deferred design decisions (removed once
   implemented and documented elsewhere)
 

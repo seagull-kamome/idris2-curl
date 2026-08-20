@@ -76,4 +76,44 @@ static inline char *idris2curl_url_get(CURLU *u, int what, unsigned int flags) {
     return (rc == CURLUE_OK && part != NULL) ? part : (char *) "";
 }
 
+/* curl_version_info() returns curl_version_info_data*, a real C
+ * struct with ~20 fields (curl/curl.h) -- not a scalar %foreign can
+ * hand back directly. Rather than bind System.FFI's own Struct/
+ * getField (Chez supports it, but upstream RefC itself doesn't --
+ * rc2/doc/c-struct-support.md's own "What's confirmed" section; only
+ * rc2's later addition does -- so it wouldn't build under plain
+ * RefC), these shims read one field each off the same struct pointer,
+ * same "collapse to a scalar return" idea as idris2curl_getinfo_*
+ * above. Only the handful of fields actually useful without also
+ * binding curl_version_info_data's own `protocols`/`feature_names`
+ * (NULL-terminated string arrays -- no Idris-side array-of-CFString
+ * binding exists yet) are covered: version string, numeric version,
+ * build host triple, the feature bitmask, and the SSL backend's own
+ * version string. curl_version_info(CURLVERSION_NOW) itself returns a
+ * pointer to a static, library-owned struct (never freed, never
+ * reallocated) -- calling it repeatedly, once per field read here, is
+ * cheap and never invalidates a previous shim's own return value. */
+static inline char *idris2curl_version_info_version(void) {
+    const char *v = curl_version_info(CURLVERSION_NOW)->version;
+    return (char *) (v == NULL ? "" : v);
+}
+
+static inline unsigned int idris2curl_version_info_version_num(void) {
+    return curl_version_info(CURLVERSION_NOW)->version_num;
+}
+
+static inline char *idris2curl_version_info_host(void) {
+    const char *v = curl_version_info(CURLVERSION_NOW)->host;
+    return (char *) (v == NULL ? "" : v);
+}
+
+static inline int idris2curl_version_info_features(void) {
+    return curl_version_info(CURLVERSION_NOW)->features;
+}
+
+static inline char *idris2curl_version_info_ssl_version(void) {
+    const char *v = curl_version_info(CURLVERSION_NOW)->ssl_version;
+    return (char *) (v == NULL ? "" : v);
+}
+
 #endif

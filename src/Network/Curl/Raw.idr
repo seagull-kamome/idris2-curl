@@ -123,6 +123,32 @@ prim__curlFree : AnyPtr -> PrimIO ()
 %foreign "C:curl_version,libcurl,curl/curl.h"
 prim__curlVersion : PrimIO String
 
+-- curl_version_info() returns a real C struct, not a scalar -- see
+-- idris2curl_version_info_version's own doc comment
+-- (idris2curl_compat.h) for why these route through per-field shims
+-- (RefC/rc2-only, no Chez binding, same "static inline, static
+-- linking only" reasoning as curl_easy_getinfo) rather than
+-- System.FFI's own Struct/getField.
+%foreign "RefC:idris2curl_version_info_version,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_version_info_version,libcurl,idris2curl_compat.h"
+prim__curlVersionInfoVersion : PrimIO String
+
+%foreign "RefC:idris2curl_version_info_version_num,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_version_info_version_num,libcurl,idris2curl_compat.h"
+prim__curlVersionInfoVersionNum : PrimIO Int
+
+%foreign "RefC:idris2curl_version_info_host,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_version_info_host,libcurl,idris2curl_compat.h"
+prim__curlVersionInfoHost : PrimIO String
+
+%foreign "RefC:idris2curl_version_info_features,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_version_info_features,libcurl,idris2curl_compat.h"
+prim__curlVersionInfoFeatures : PrimIO Int
+
+%foreign "RefC:idris2curl_version_info_ssl_version,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_version_info_ssl_version,libcurl,idris2curl_compat.h"
+prim__curlVersionInfoSslVersion : PrimIO String
+
 %foreign "C:curl_url,libcurl,curl/curl.h"
 prim__curlUrl : PrimIO AnyPtr
 
@@ -259,6 +285,34 @@ curlEasyUnescape h s = do
 export
 curlVersion : HasIO io => io String
 curlVersion = primIO prim__curlVersion
+
+||| RefC/rc2-only, no Chez binding -- see `prim__curlVersionInfoVersion`'s
+||| own doc comment.
+export
+curlVersionInfoVersion : HasIO io => io String
+curlVersionInfoVersion = primIO prim__curlVersionInfoVersion
+
+||| RefC/rc2-only, same as `curlVersionInfoVersion`.
+export
+curlVersionInfoVersionNum : HasIO io => io Int
+curlVersionInfoVersionNum = primIO prim__curlVersionInfoVersionNum
+
+||| RefC/rc2-only, same as `curlVersionInfoVersion`.
+export
+curlVersionInfoHost : HasIO io => io String
+curlVersionInfoHost = primIO prim__curlVersionInfoHost
+
+||| RefC/rc2-only, same as `curlVersionInfoVersion`. See
+||| curl/curl.h's own `CURL_VERSION_*` bit flags (`CURL_VERSION_SSL`,
+||| `CURL_VERSION_HTTP2`, ...) to test against the result.
+export
+curlVersionInfoFeatures : HasIO io => io Int
+curlVersionInfoFeatures = primIO prim__curlVersionInfoFeatures
+
+||| RefC/rc2-only, same as `curlVersionInfoVersion`.
+export
+curlVersionInfoSslVersion : HasIO io => io String
+curlVersionInfoSslVersion = primIO prim__curlVersionInfoSslVersion
 
 ||| `Nothing` on the same allocation-failure contract as
 ||| `curlEasyInit` (`curl_url(3)`).

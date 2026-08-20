@@ -253,3 +253,57 @@ curllockdata_DNS = MkCurlLockData 3
 public export
 curllockdata_SSL_SESSION : CurlLockData
 curllockdata_SSL_SESSION = MkCurlLockData 4
+
+||| `curl_easy_pause`'s own `action` bitmask (curl/curl.h's own
+||| `CURLPAUSE_*` -- a plain `Int`, not a wrapper record like
+||| `CURLoption`/`CURLINFO`/etc. above: unlike those, this one is
+||| meant to be OR'd together (`Data.Bits`'s own `.|.` on `Int`, an
+||| existing `Bits Int` instance -- see curl/curl.h's own
+||| `CURLPAUSE_ALL = CURLPAUSE_RECV | CURLPAUSE_SEND` for precedent),
+||| and a wrapper wouldn't compose with `.|.` without its own `Bits`
+||| instance duplicating `Int`'s one for no benefit.
+public export
+curlpause_RECV : Int
+curlpause_RECV = 1
+
+public export
+curlpause_SEND : Int
+curlpause_SEND = 4
+
+public export
+curlpause_ALL : Int
+curlpause_ALL = 5
+
+public export
+curlpause_CONT : Int
+curlpause_CONT = 0
+
+||| A libcurl `CURLHcode` result from the structured header API
+||| (`curl_easy_header`) -- a distinct enum from every other `*code`
+||| wrapper above.
+public export
+record CURLHcode where
+  constructor MkCURLHcode
+  code : Int
+
+public export
+Eq CURLHcode where
+  MkCURLHcode a == MkCURLHcode b = a == b
+
+public export
+Show CURLHcode where
+  show (MkCURLHcode c) = "CURLHcode " ++ show c
+
+public export
+curlhe_OK : CURLHcode
+curlhe_OK = MkCURLHcode 0
+
+||| `curl_easy_header`/`curl_easy_nextheader`'s own `origin` bitmask
+||| (curl/header.h's own `CURLH_*`) -- a plain `Int`, same "meant to
+||| be OR'd together" reasoning as `curlpause_*` above (only
+||| `CURLH_HEADER`, an ordinary server response header, is bound;
+||| `CURLH_TRAILER`/`CURLH_CONNECT`/`CURLH_1XX`/`CURLH_PSEUDO` aren't,
+||| no concrete need yet).
+public export
+curlh_HEADER : Int
+curlh_HEADER = 1

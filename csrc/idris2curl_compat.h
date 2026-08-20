@@ -11,6 +11,7 @@
  * -Wdiscarded-qualifiers on a direct %foreign binding. */
 
 #include <curl/curl.h>
+#include <curl/header.h>
 
 static inline char *idris2curl_easy_strerror(int code) {
     return (char *) curl_easy_strerror((CURLcode) code);
@@ -183,6 +184,40 @@ static inline int idris2curl_multimsg_result(void *msg) {
 
 static inline char *idris2curl_share_strerror(int code) {
     return (char *) curl_share_strerror((CURLSHcode) code);
+}
+
+/* curl_easy_header()'s own last argument is a write-through
+ * `struct curl_header **` output pointer -- collapsed to a plain
+ * return value (NULL on any CURLHcode other than CURLHE_OK, same
+ * "small non-negative or unambiguous sentinel" shape every other
+ * collapsed-output shim here uses) the same way idris2curl_getinfo_*
+ * collapses curl_easy_getinfo's own output pointer. `nameindex` (which
+ * same-named header to read, when more than one exists) is hard-coded
+ * to `0` (the first/only one) -- no concrete need yet to read a
+ * specific later occurrence. `request` (which numbered request this
+ * concerns, relevant across redirects/multi-stage auth) is exposed as
+ * a real parameter since which request a caller wants is genuinely
+ * call-site-specific, unlike nameindex. */
+static inline void *idris2curl_easy_header(CURL *h, const char *name, unsigned int origin, int request) {
+    struct curl_header *hout = NULL;
+    CURLHcode rc = curl_easy_header(h, name, 0, origin, request, &hout);
+    return (rc == CURLHE_OK) ? (void *) hout : NULL;
+}
+
+/* curl_header's own fields, read the same "one shim per field" way
+ * idris2curl_version_info_ and idris2curl_multimsg_ above do, rather
+ * than System.FFI's own Struct/getField (upstream RefC doesn't
+ * implement it at all, same reasoning as doc/version-info-struct.md).
+ * `amount`/`index` (both `size_t`) aren't exposed -- no concrete need
+ * yet to distinguish "which occurrence of a repeated header" beyond
+ * always reading the first (see idris2curl_easy_header's own
+ * `nameindex = 0` above). */
+static inline char *idris2curl_header_name(void *h) {
+    return h == NULL ? (char *) "" : ((struct curl_header *) h)->name;
+}
+
+static inline char *idris2curl_header_value(void *h) {
+    return h == NULL ? (char *) "" : ((struct curl_header *) h)->value;
 }
 
 #endif

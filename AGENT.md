@@ -29,8 +29,8 @@ C codegen backend, not just the default Chez backend.
 - `examples/` — small standalone programs that exercise the bindings
   end to end, used to verify they build/link/run on Chez, upstream
   RefC, and `idris2-rc-cg`'s `rc2` backend -- except `GetInfo.idr`,
-  `UrlGet.idr`, `VersionInfo.idr`, and `Multi.idr`, which are
-  RefC/rc2-only (see `doc/variadic-getinfo.md`/
+  `UrlGet.idr`, `VersionInfo.idr`, `Multi.idr`, and `Header.idr`, which
+  are RefC/rc2-only (see `doc/variadic-getinfo.md`/
   `doc/version-info-struct.md`/`doc/multi-interface.md`)
 - `doc/` — implementation deep-dives, meant to let a future session
   regain context without re-deriving the design (currently:

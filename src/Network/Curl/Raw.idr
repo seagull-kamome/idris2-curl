@@ -299,6 +299,38 @@ prim__curlMimeFiledata : AnyPtr -> String -> PrimIO Int
 %foreign "C:curl_mime_headers,libcurl,curl/curl.h"
 prim__curlMimeHeaders : AnyPtr -> AnyPtr -> Int -> PrimIO Int
 
+%foreign "C:curl_easy_pause,libcurl,curl/curl.h"
+prim__curlEasyPause : AnyPtr -> Int -> PrimIO Int
+
+%foreign "C:curl_easy_upkeep,libcurl,curl/curl.h"
+prim__curlEasyUpkeep : AnyPtr -> PrimIO Int
+
+-- curl_easy_header()'s own last argument is a write-through output
+-- pointer -- see idris2curl_easy_header's own doc comment
+-- (idris2curl_compat.h) for why it's collapsed via a csrc/ shim,
+-- RefC/rc2-only, same reasoning as curl_easy_getinfo
+-- (doc/variadic-getinfo.md).
+%foreign "RefC:idris2curl_easy_header,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_easy_header,libcurl,idris2curl_compat.h"
+prim__curlEasyHeader : AnyPtr -> String -> Int -> Int -> PrimIO AnyPtr
+
+-- curl_easy_nextheader() itself takes only plain input
+-- arguments/returns a pointer directly (no output-pointer trouble),
+-- so -- unlike curl_easy_header just above -- this binds directly on
+-- all three backends. Reading the curl_header* it returns still needs
+-- idris2curl_header_name/value below (RefC/rc2-only, same struct-field
+-- reasoning as curl_version_info/CURLMsg).
+%foreign "C:curl_easy_nextheader,libcurl,curl/curl.h"
+prim__curlEasyNextheader : AnyPtr -> Int -> Int -> AnyPtr -> PrimIO AnyPtr
+
+%foreign "RefC:idris2curl_header_name,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_header_name,libcurl,idris2curl_compat.h"
+prim__curlHeaderName : AnyPtr -> PrimIO String
+
+%foreign "RefC:idris2curl_header_value,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_header_value,libcurl,idris2curl_compat.h"
+prim__curlHeaderValue : AnyPtr -> PrimIO String
+
 ||| `CURL_GLOBAL_ALL`, per curl/curl.h.
 curlGlobalAll : Int
 curlGlobalAll = 3
@@ -638,3 +670,50 @@ export
 curlMimeHeaders : HasIO io => AnyPtr -> AnyPtr -> (takeOwnership : Bool) -> io CURLcode
 curlMimeHeaders part headers takeOwnership =
     MkCURLcode <$> primIO (prim__curlMimeHeaders part headers (if takeOwnership then 1 else 0))
+
+||| `action` -- see `Network.Curl.Types`'s own `curlpause_*` bitmask
+||| constants, OR'd together with `Data.Bits`'s own `.|.` for more than
+||| one of `curlpause_RECV`/`curlpause_SEND` at once.
+export
+curlEasyPause : HasIO io => AnyPtr -> (action : Int) -> io CURLcode
+curlEasyPause h action = MkCURLcode <$> primIO (prim__curlEasyPause h action)
+
+export
+curlEasyUpkeep : HasIO io => AnyPtr -> io CURLcode
+curlEasyUpkeep h = MkCURLcode <$> primIO (prim__curlEasyUpkeep h)
+
+||| RefC/rc2-only, no Chez binding -- see `prim__curlEasyHeader`'s own
+||| doc comment. `Nothing` on `CURLHE_MISSING`/any other non-OK
+||| `CURLHcode` (`idris2curl_easy_header`'s own collapsed `NULL`,
+||| indistinguishable from a genuine "no such header" here -- the
+||| distinction isn't useful to a caller either way, both mean "this
+||| header isn't present"). `origin` -- see `curlh_HEADER`; `request`
+||| -- which numbered request this concerns (`0` for the initial one).
+export
+curlEasyHeader : HasIO io => AnyPtr -> (name : String) -> (origin : Int) -> (request : Int) -> io (Maybe (String, String))
+curlEasyHeader h name origin request = do
+    hdr <- primIO (prim__curlEasyHeader h name origin request)
+    if prim__nullAnyPtr hdr /= 0
+       then pure Nothing
+       else do
+         n <- primIO (prim__curlHeaderName hdr)
+         v <- primIO (prim__curlHeaderValue hdr)
+         pure $ Just (n, v)
+
+||| RefC/rc2-only, same as `curlEasyHeader`. `prev` -- `curlSlistEmpty`
+||| to start iterating from the first header, or a previous call's own
+||| result (the raw pointer, not the `(String, String)` pair
+||| `curlEasyHeader`/this function's own wrapper hands back -- see
+||| `examples/Header.idr` for the iteration pattern) to continue.
+||| `Nothing` once iteration reaches the end -- the ordinary, expected
+||| way this loop ends, not an error.
+export
+curlEasyNextheader : HasIO io => AnyPtr -> (origin : Int) -> (request : Int) -> (prev : AnyPtr) -> io (Maybe (AnyPtr, String, String))
+curlEasyNextheader h origin request prev = do
+    hdr <- primIO (prim__curlEasyNextheader h origin request prev)
+    if prim__nullAnyPtr hdr /= 0
+       then pure Nothing
+       else do
+         n <- primIO (prim__curlHeaderName hdr)
+         v <- primIO (prim__curlHeaderValue hdr)
+         pure $ Just (hdr, n, v)

@@ -44,12 +44,25 @@ a concrete need comes up.
 
 ## Smaller easy-interface gaps
 
-Not bound: `curl_easy_pause`, `curl_easy_recv`/`curl_easy_send`
-(raw socket access), `curl_easy_upkeep`, `curl_easy_header`/
-`curl_easy_nextheader`/`curl_pushheader_byname`/`curl_pushheader_bynum`
-(the newer structured header API), `curl_easy_ssls_export`/
-`curl_easy_ssls_import`. None blocking anything else, just not reached
-yet.
+Bound: `curl_easy_pause`/`curl_easy_upkeep` (fully bound on all three
+backends, no output-pointer trouble) and `curl_easy_header`/
+`curl_easy_nextheader` (the structured header API -- RefC/rc2 only,
+same `struct curl_header` output-pointer/field-access reasoning as
+`curl_version_info`/`CURLMsg`; see `Network.Curl.Raw`'s own doc
+comment on `prim__curlEasyHeader`). `curl_easy_pause` itself is only
+meaningful called from inside a transfer callback -- confirmed
+directly, including with a bare C reproduction outside Idris, that
+calling it on a handle in either of the only two states reachable
+without one (before/after a transfer) always returns
+`CURLE_BAD_FUNCTION_ARGUMENT`; `examples/PauseUpkeep.idr` documents
+and expects this rather than treating it as a binding bug.
+
+Not bound: `curl_easy_recv`/`curl_easy_send` (raw socket access --
+binary buffers, no concrete need yet), `curl_pushheader_byname`/
+`curl_pushheader_bynum` (HTTP/2 server push only), `curl_easy_ssls_export`
+(needs a callback)/`curl_easy_ssls_import` (binary session-ticket data,
+no concrete need without being able to export first). None blocking
+anything else, just not reached yet.
 
 ## `CURLINFO`/`CURLOPT` coverage is a small, hand-picked subset
 

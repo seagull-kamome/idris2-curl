@@ -48,4 +48,32 @@ static inline double idris2curl_getinfo_double(CURL *h, int info) {
     return v;
 }
 
+static inline char *idris2curl_url_strerror(int code) {
+    return (char *) curl_url_strerror((CURLUcode) code);
+}
+
+/* curl_url_get() writes its own result through a `char **` output
+ * argument (allocated by libcurl, meant to be freed with curl_free()
+ * once the caller's own done with it) rather than returning it
+ * directly -- collapsed to a plain return value here for the same
+ * reason as idris2curl_getinfo_string above. Unlike that one, this
+ * leaks: the %foreign `String` return copies this pointer's own bytes
+ * into a fresh Idris2-owned string right after this call returns (see
+ * idris2rc2_mkString's own memcpy), but nothing downstream of that
+ * copy ever gets the chance to curl_free() libcurl's own original
+ * allocation -- there's no hook in a plain %foreign call for "do this
+ * after the copy, before returning to Idris2 code". Deliberately
+ * accepted for now: one URL part's worth of leaked bytes (rarely more
+ * than a few dozen) per curl_url_get call, not unbounded, not
+ * accumulating per network request the way a request-body buffer
+ * would. Revisit (e.g. by splitting this into fetch/take/free step
+ * functions coordinated from the Idris2 side, at the cost of thread-
+ * unsafe global state) if a program ends up calling this often enough
+ * for that to matter. */
+static inline char *idris2curl_url_get(CURLU *u, int what, unsigned int flags) {
+    char *part = NULL;
+    CURLUcode rc = curl_url_get(u, (CURLUPart) what, &part, flags);
+    return (rc == CURLUE_OK && part != NULL) ? part : (char *) "";
+}
+
 #endif

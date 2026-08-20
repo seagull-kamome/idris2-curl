@@ -23,27 +23,26 @@ backend Idris2 ships with.
 ## Status
 
 Bound so far, enough to drive a synchronous `curl_easy` GET request
-with custom headers and inspect the result: `curl_global_init`,
-`curl_global_cleanup`, `curl_easy_init`, `curl_easy_cleanup`,
-`curl_easy_setopt` (string-, long-, and slist-valued options),
-`curl_easy_perform`, `curl_easy_strerror`, `curl_easy_duphandle`,
-`curl_easy_reset`, `curl_easy_getinfo` (string/long/double `CURLINFO`s
--- RefC/rc2 only, see `doc/variadic-getinfo.md`), `curl_slist_append`,
-`curl_slist_free_all`. See `src/Network/Curl/Raw.idr` for the full
-list and `src/Network/Curl/Types.idr` for the `CURLoption`/`CURLcode`/
-`CURLINFO` constants currently defined.
+with custom headers, inspect the result, and parse/build URLs:
+`curl_global_init`, `curl_global_cleanup`, `curl_easy_init`,
+`curl_easy_cleanup`, `curl_easy_setopt` (string-, long-, and
+slist-valued options), `curl_easy_perform`, `curl_easy_strerror`,
+`curl_easy_duphandle`, `curl_easy_reset`, `curl_easy_getinfo`
+(string/long/double `CURLINFO`s -- RefC/rc2 only, see
+`doc/variadic-getinfo.md`), `curl_slist_append`, `curl_slist_free_all`,
+`curl_easy_escape`, `curl_easy_unescape`, `curl_free`, `curl_version`,
+and the `curl_url_*` URL API (`curl_url_get` is RefC/rc2 only, same
+reason as `curl_easy_getinfo`). See `src/Network/Curl/Raw.idr` for the
+full list and `src/Network/Curl/Types.idr` for the `CURLoption`/
+`CURLcode`/`CURLINFO`/`CURLUcode`/`CURLUPart` constants currently
+defined.
 
 Being implemented incrementally, working through libcurl's own public
-API surface (`curl_easy_*`, `curl_multi_*`, `curl_url_*`, `curl_mime_*`,
-...) roughly in order of practical usefulness. Notably not bound yet:
-any `CURLOPT_*WRITEFUNCTION`-style callback (passing an Idris function
-as a C function pointer isn't something `System.FFI` supports out of
-the box -- unresolved so far, deliberately deferred rather than worked
-around), the multi/share/mime interfaces, and URL parsing
-(`curl_url_*`).
-
-More of libcurl's own API surface (multi handle, callbacks/write
-functions, more options) gets added incrementally as needed.
+API surface roughly in order of practical usefulness. See `TODO.md`
+for the current list of gaps (callback options like
+`CURLOPT_WRITEFUNCTION`, `curl_version_info`, the multi/share/mime
+interfaces, smaller easy-interface gaps, and a couple of deliberately
+accepted small memory leaks).
 
 ## Backends
 
@@ -76,3 +75,4 @@ BSD3, per each module's own copyright header.
 
 - `AGENT.md` — repo layout, coding conventions, build instructions
 - `doc/` — implementation deep-dives for specific design decisions
+- `TODO.md` — open gaps and deferred design decisions

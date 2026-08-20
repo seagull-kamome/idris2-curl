@@ -1,4 +1,17 @@
-# Binding `curl_easy_getinfo`: variadic, RefC/rc2-only
+# Binding `curl_easy_getinfo`/`curl_url_get`: variadic or output-pointer, RefC/rc2-only
+
+`curl_url_get` (`curl/urlapi.h`) shares this same "no Chez binding at
+all" conclusion for a related but distinct reason: it isn't variadic,
+but its own third argument is a `char **` output pointer
+(`idris2curl_url_get`, `csrc/idris2curl_compat.h`, collapses it to a
+plain return value the same way the shims below do) -- `%foreign`
+can pass a pointer *in*, but there's no way to read a value *back*
+out of one afterward without a further FFI call, which the `static
+inline` shim provides but Chez's own dynamic FFI can't reach (same
+"real symbol under static linking only" constraint explained below).
+Everything below is written in terms of `curl_easy_getinfo`, but the
+"no Chez target, fails cleanly at the call site" reasoning applies to
+`curl_url_get` identically.
 
 `curl_easy_getinfo`'s own real C signature is
 `CURLcode curl_easy_getinfo(CURL *curl, CURLINFO info, ...)` -- a

@@ -97,6 +97,59 @@ prim__curlEasyGetinfoString : AnyPtr -> Int -> PrimIO String
          "RC2:idris2curl_getinfo_double,libcurl,idris2curl_compat.h"
 prim__curlEasyGetinfoDouble : AnyPtr -> Int -> PrimIO Double
 
+-- curl_easy_escape/curl_easy_unescape/curl_free: all return/take a
+-- plain (non-const) `char *`/`void *`, so no const-cast shim is
+-- needed here unlike curl_easy_strerror above. The escaped/unescaped
+-- result is libcurl's own fresh allocation, meant to be released with
+-- curl_free() once read -- but %foreign's own String return already
+-- copies the bytes out before this binding gets a chance to call
+-- curl_free() on the original, so (like idris2curl_url_get, see
+-- idris2curl_compat.h's own doc comment) this leaks libcurl's own
+-- allocation on every call. Deliberately accepted for the same
+-- "small, bounded, not accumulating per request" reasoning.
+-- curl_easy_unescape's own fourth argument (`int *outlength`) is
+-- passed NULL -- always safe per curl_easy_unescape(3) when the
+-- caller only needs the NUL-terminated string result, not a decoded
+-- length that could itself embed a NUL byte.
+%foreign "C:curl_easy_escape,libcurl,curl/curl.h"
+prim__curlEasyEscape : AnyPtr -> String -> Int -> PrimIO String
+
+%foreign "C:curl_easy_unescape,libcurl,curl/curl.h"
+prim__curlEasyUnescape : AnyPtr -> String -> Int -> AnyPtr -> PrimIO String
+
+%foreign "C:curl_free,libcurl,curl/curl.h"
+prim__curlFree : AnyPtr -> PrimIO ()
+
+%foreign "C:curl_version,libcurl,curl/curl.h"
+prim__curlVersion : PrimIO String
+
+%foreign "C:curl_url,libcurl,curl/curl.h"
+prim__curlUrl : PrimIO AnyPtr
+
+%foreign "C:curl_url_cleanup,libcurl,curl/curl.h"
+prim__curlUrlCleanup : AnyPtr -> PrimIO ()
+
+%foreign "C:curl_url_dup,libcurl,curl/curl.h"
+prim__curlUrlDup : AnyPtr -> PrimIO AnyPtr
+
+%foreign "C:curl_url_set,libcurl,curl/curl.h"
+prim__curlUrlSet : AnyPtr -> Int -> String -> Int -> PrimIO Int
+
+-- curl_url_get() writes its own result through a `char **` output
+-- argument rather than returning it -- see idris2curl_url_get's own
+-- doc comment (idris2curl_compat.h) for both why it needs a shim at
+-- all and the leak this shares with curl_easy_escape/unescape above.
+%foreign "RefC:idris2curl_url_get,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_url_get,libcurl,idris2curl_compat.h"
+prim__curlUrlGet : AnyPtr -> Int -> Int -> PrimIO String
+
+-- curl_url_strerror() returns `const char *`, same const-cast
+-- reasoning as curl_easy_strerror above.
+%foreign "C:curl_url_strerror,libcurl,curl/curl.h"
+         "RefC:idris2curl_url_strerror,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_url_strerror,libcurl,idris2curl_compat.h"
+prim__curlUrlStrerror : Int -> PrimIO String
+
 ||| `CURL_GLOBAL_ALL`, per curl/curl.h.
 curlGlobalAll : Int
 curlGlobalAll = 3
@@ -187,3 +240,64 @@ curlSlistAppend list s = primIO (prim__curlSlistAppend list s)
 export
 curlSlistFreeAll : HasIO io => AnyPtr -> io ()
 curlSlistFreeAll list = primIO (prim__curlSlistFreeAll list)
+
+||| `Nothing` on the same "libcurl itself reports an error" contract as
+||| `curl_easy_escape(3)` (`Nothing` for both allocation failure and a
+||| `length` too large to represent as the underlying `int`).
+export
+curlEasyEscape : HasIO io => AnyPtr -> String -> io (Maybe String)
+curlEasyEscape h s = do
+    r <- primIO (prim__curlEasyEscape h s 0)
+    pure $ if r == "" then Nothing else Just r
+
+export
+curlEasyUnescape : HasIO io => AnyPtr -> String -> io (Maybe String)
+curlEasyUnescape h s = do
+    r <- primIO (prim__curlEasyUnescape h s 0 prim__getNullAnyPtr)
+    pure $ if r == "" then Nothing else Just r
+
+export
+curlVersion : HasIO io => io String
+curlVersion = primIO prim__curlVersion
+
+||| `Nothing` on the same allocation-failure contract as
+||| `curlEasyInit` (`curl_url(3)`).
+export
+curlUrl : HasIO io => io (Maybe AnyPtr)
+curlUrl = do
+    u <- primIO prim__curlUrl
+    pure $ if prim__nullAnyPtr u /= 0 then Nothing else Just u
+
+export
+curlUrlCleanup : HasIO io => AnyPtr -> io ()
+curlUrlCleanup u = primIO (prim__curlUrlCleanup u)
+
+||| `Nothing` on the same allocation-failure contract as `curlUrl`
+||| (`curl_url_dup(3)`).
+export
+curlUrlDup : HasIO io => AnyPtr -> io (Maybe AnyPtr)
+curlUrlDup u = do
+    u' <- primIO (prim__curlUrlDup u)
+    pure $ if prim__nullAnyPtr u' /= 0 then Nothing else Just u'
+
+||| `flags` -- see curl/urlapi.h's own `CURLU_*` bit flags
+||| (`CURLU_URLENCODE`, `CURLU_DEFAULT_SCHEME`, ...); `0` for none.
+export
+curlUrlSet : HasIO io => AnyPtr -> CURLUPart -> String -> Int -> io CURLUcode
+curlUrlSet u (MkCURLUPart p) s flags = MkCURLUcode <$> primIO (prim__curlUrlSet u p s flags)
+
+||| RefC/rc2-only, no Chez binding -- see `Network.Curl.Raw`'s own doc
+||| comment on `prim__curlUrlGet` and `doc/variadic-getinfo.md`-style
+||| reasoning (the underlying shim is `static inline`, unreachable
+||| under Chez's own dynamic FFI). `flags` -- see `curlUrlSet`'s own
+||| doc comment. Empty string on either a `curl_url_get` failure or a
+||| part that's genuinely empty -- `CURLUcode` isn't threaded back
+||| through `idris2curl_url_get`'s own collapsed return, so the two
+||| aren't distinguishable here yet.
+export
+curlUrlGet : HasIO io => AnyPtr -> CURLUPart -> Int -> io String
+curlUrlGet u (MkCURLUPart p) flags = primIO (prim__curlUrlGet u p flags)
+
+export
+curlUrlStrerror : HasIO io => CURLUcode -> io String
+curlUrlStrerror (MkCURLUcode c) = primIO (prim__curlUrlStrerror c)

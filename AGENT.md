@@ -8,7 +8,9 @@ against current Idris2's reflection API, and its option/error-code
 types are woven through the whole public surface, making it
 impractical to strip the deriving out and keep the rest. Every option/
 error constant here is instead a hand-written value taken straight
-from `curl/curl.h`.
+from `curl/curl.h`. See `TODO.md` for open gaps and deferred design
+decisions, `README.md` for the human-facing overview and current
+binding status.
 
 One goal of this repo is verifying that ordinary libcurl `%foreign`
 calls actually build and run under `idris2-rc-cg`'s independent `rc2`
@@ -26,14 +28,16 @@ C codegen backend, not just the default Chez backend.
   declaration (currently `idris2curl_compat.h`, see `doc/`)
 - `examples/` — small standalone programs that exercise the bindings
   end to end, used to verify they build/link/run on Chez, upstream
-  RefC, and `idris2-rc-cg`'s `rc2` backend -- except `GetInfo.idr`,
-  which is RefC/rc2-only (see `doc/variadic-getinfo.md`)
+  RefC, and `idris2-rc-cg`'s `rc2` backend -- except `GetInfo.idr` and
+  `UrlGet.idr`, which are RefC/rc2-only (see `doc/variadic-getinfo.md`)
 - `doc/` — implementation deep-dives, meant to let a future session
   regain context without re-deriving the design (currently:
   `const-char-ffi.md` for why a `const char *`-returning libcurl
   function needs a `csrc/` shim and three separate `%foreign` targets,
-  one per backend; `variadic-getinfo.md` for why `curl_easy_getinfo`
-  has no Chez binding at all)
+  one per backend; `variadic-getinfo.md` for why `curl_easy_getinfo`/
+  `curl_url_get` have no Chez binding at all)
+- `TODO.md` — open gaps and deferred design decisions (removed once
+  implemented and documented elsewhere)
 
 ## サブエージェント
 - ファイル調査、コードベース調査、定型実装はサブエージェントに移譲する。

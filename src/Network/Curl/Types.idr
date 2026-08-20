@@ -92,3 +92,69 @@ curlinfo_CONTENT_TYPE = MkCURLINFO 1048594 -- CURLINFO_STRING + 18
 public export
 curlinfo_REDIRECT_COUNT : CURLINFO
 curlinfo_REDIRECT_COUNT = MkCURLINFO 2097172 -- CURLINFO_LONG + 20
+
+||| A `CURLUcode` result from the URL API (`curl_url_get`/
+||| `curl_url_set`) -- a distinct enum from `CURLcode` in curl/curl.h
+||| itself, so kept as its own wrapper here too.
+public export
+record CURLUcode where
+  constructor MkCURLUcode
+  code : Int
+
+public export
+Eq CURLUcode where
+  MkCURLUcode a == MkCURLUcode b = a == b
+
+public export
+Show CURLUcode where
+  show (MkCURLUcode c) = "CURLUcode " ++ show c
+
+||| Success, per curl/curl.h's `CURLUE_OK = 0` (first enum member).
+public export
+curlue_OK : CURLUcode
+curlue_OK = MkCURLUcode 0
+
+||| A `CURLUPart` -- which URL component `curl_url_get`/`curl_url_set`
+||| read or write. Values are the enum's own declaration order in
+||| curl/curl.h (`CURLUPART_URL = 0`, ...), same as any plain C enum
+||| with no explicit initializers.
+public export
+record CURLUPart where
+  constructor MkCURLUPart
+  part : Int
+
+public export
+curlupart_URL : CURLUPart
+curlupart_URL = MkCURLUPart 0
+
+public export
+curlupart_SCHEME : CURLUPart
+curlupart_SCHEME = MkCURLUPart 1
+
+public export
+curlupart_USER : CURLUPart
+curlupart_USER = MkCURLUPart 2
+
+public export
+curlupart_PASSWORD : CURLUPart
+curlupart_PASSWORD = MkCURLUPart 3
+
+public export
+curlupart_HOST : CURLUPart
+curlupart_HOST = MkCURLUPart 5
+
+public export
+curlupart_PORT : CURLUPart
+curlupart_PORT = MkCURLUPart 6
+
+public export
+curlupart_PATH : CURLUPart
+curlupart_PATH = MkCURLUPart 7
+
+public export
+curlupart_QUERY : CURLUPart
+curlupart_QUERY = MkCURLUPart 8
+
+public export
+curlupart_FRAGMENT : CURLUPart
+curlupart_FRAGMENT = MkCURLUPart 9

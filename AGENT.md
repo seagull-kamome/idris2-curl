@@ -22,9 +22,16 @@ C codegen backend, not just the default Chez backend.
   records and hand-written constants (no `%runElab` deriving)
 - `src/Network/Curl/Raw.idr` — direct `%foreign "C:curl_*,libcurl,curl/curl.h"`
   declarations, one per bound libcurl function
+- `csrc/` — small C shims a binding needs beyond a plain `%foreign`
+  declaration (currently `idris2curl_compat.h`, see `doc/`)
 - `examples/` — small standalone programs that exercise the bindings
-  end to end, used to verify they build/link/run on both the default
-  Chez backend and `idris2-rc-cg`'s `rc2` backend
+  end to end, used to verify they build/link/run on Chez, upstream
+  RefC, and `idris2-rc-cg`'s `rc2` backend
+- `doc/` — implementation deep-dives, meant to let a future session
+  regain context without re-deriving the design (currently:
+  `const-char-ffi.md` for why a `const char *`-returning libcurl
+  function needs a `csrc/` shim and three separate `%foreign` targets,
+  one per backend)
 
 ## サブエージェント
 - ファイル調査、コードベース調査、定型実装はサブエージェントに移譲する。
@@ -99,37 +106,16 @@ export IDRIS2_CFLAGS="-Icsrc"
 export IDRIS2_LDFLAGS="$(pkg-config --libs-only-L libcurl)"
 ../idris2-rc-cg/rc2/build/exec/idris2-rc2 --cg rc2 -p curl -o get_rc2 examples/Get.idr
 ```
-`-lcurl` itself no longer needs `IDRIS2_LDLIBS` set by hand -- rc2 now
-derives `-l<lib>` flags straight from every `%foreign`'s own lib field
-(fixed in `idris2-rc-cg` after this repo's own experiment surfaced the
-gap). Only the `-L` search path above (nix's libcurl isn't on the
-linker's default path) and, at *run* time, `LD_LIBRARY_PATH` pointing
-at the same directory are still needed by hand.
+`-lcurl` itself no longer needs `IDRIS2_LDLIBS` set by hand under rc2
+-- see `doc/const-char-ffi.md`'s own "Linker caveat" section for the
+full story (still needed under plain upstream `--cg refc`). Only the
+`-L` search path above (nix's libcurl isn't on the linker's default
+path) and, at *run* time, `LD_LIBRARY_PATH` pointing at the same
+directory are still needed by hand.
 
-`csrc/idris2curl_compat.h` holds `static inline` shims for the small
-number of libcurl functions returning `const char *`
-(`curl_easy_strerror` so far) -- both rc2's and upstream RefC's own
-`%foreign` lowering hardcode `CFString` as non-const `char *`, which
-collides with either backend's own `-Werror` (confirmed directly
-against both, not inferred from one -- see `idris2-rc-cg/TODO.md`'s
-"CFString's hardcoded `char *` return type" entry). Chez has no such
-issue (dynamically typed, no C-level qualifier), and can't call the
-`static inline` shim anyway -- it only exists in the header, never as
-a real symbol in `libcurl.so`'s own table, so Chez's own dynamic load
-would fail with "no entry for ...". Each such binding therefore
-declares *three* `%foreign` targets: a plain
-`"C:curl_easy_strerror,..."` entry Chez picks up, an
-`"RefC:idris2curl_easy_strerror,..."` entry plain upstream `idris2
---cg refc` picks up (its own FFI tags are `["RefC", "C"]`), and an
-`"RC2:idris2curl_easy_strerror,..."` entry `Compiler.RC2.Emit`'s own
-`ffiTags` (`["RC2", "RefC", "C"]`, checked in that order) picks up
-instead for rc2 specifically. Both static-linking backends also need
-`-lcurl` reaching the linker -- rc2 derives it automatically from the
-`%foreign` lib field (`Compiler.RC2.CC`'s own `compileCFile`), but
-plain upstream RefC doesn't, so building with `--cg refc` still needs
-`IDRIS2_LDLIBS`/`LDLIBS` set by hand. See `Network.Curl.Raw`'s own
-`prim__curlEasyStrerror` for the pattern to follow for any future
-`const char *`-returning binding.
+See `doc/const-char-ffi.md` for why `curl_easy_strerror` (and any
+future `const char *`-returning binding) needs `csrc/`'s own shim and
+three separate `%foreign` targets, one per backend.
 
 ## Conventions
 

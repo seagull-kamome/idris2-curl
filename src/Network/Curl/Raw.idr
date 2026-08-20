@@ -176,6 +176,56 @@ prim__curlUrlGet : AnyPtr -> Int -> Int -> PrimIO String
          "RC2:idris2curl_url_strerror,libcurl,idris2curl_compat.h"
 prim__curlUrlStrerror : Int -> PrimIO String
 
+%foreign "C:curl_multi_init,libcurl,curl/multi.h"
+prim__curlMultiInit : PrimIO AnyPtr
+
+%foreign "C:curl_multi_cleanup,libcurl,curl/multi.h"
+prim__curlMultiCleanup : AnyPtr -> PrimIO Int
+
+%foreign "C:curl_multi_add_handle,libcurl,curl/multi.h"
+prim__curlMultiAddHandle : AnyPtr -> AnyPtr -> PrimIO Int
+
+%foreign "C:curl_multi_remove_handle,libcurl,curl/multi.h"
+prim__curlMultiRemoveHandle : AnyPtr -> AnyPtr -> PrimIO Int
+
+-- curl_multi_strerror() returns `const char *`, same const-cast
+-- reasoning as curl_easy_strerror above.
+%foreign "C:curl_multi_strerror,libcurl,curl/multi.h"
+         "RefC:idris2curl_multi_strerror,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_multi_strerror,libcurl,idris2curl_compat.h"
+prim__curlMultiStrerror : Int -> PrimIO String
+
+-- curl_multi_perform()/curl_multi_wait()/curl_multi_info_read() each
+-- take a write-through output-pointer argument %foreign can't express
+-- cleanly (an int count, or -- for info_read -- a CURLMsg* result
+-- alongside a count) -- see idris2curl_multi_perform/multi_wait/
+-- multi_info_read's own doc comments (idris2curl_compat.h) for how
+-- each is collapsed to a plain return. RefC/rc2-only, no Chez binding,
+-- same reasoning as curl_easy_getinfo (doc/variadic-getinfo.md).
+%foreign "RefC:idris2curl_multi_perform,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_multi_perform,libcurl,idris2curl_compat.h"
+prim__curlMultiPerform : AnyPtr -> PrimIO Int
+
+%foreign "RefC:idris2curl_multi_wait,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_multi_wait,libcurl,idris2curl_compat.h"
+prim__curlMultiWait : AnyPtr -> Int -> PrimIO Int
+
+%foreign "RefC:idris2curl_multi_info_read,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_multi_info_read,libcurl,idris2curl_compat.h"
+prim__curlMultiInfoRead : AnyPtr -> PrimIO AnyPtr
+
+%foreign "RefC:idris2curl_multimsg_msg,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_multimsg_msg,libcurl,idris2curl_compat.h"
+prim__curlMultimsgMsg : AnyPtr -> PrimIO Int
+
+%foreign "RefC:idris2curl_multimsg_easy_handle,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_multimsg_easy_handle,libcurl,idris2curl_compat.h"
+prim__curlMultimsgEasyHandle : AnyPtr -> PrimIO AnyPtr
+
+%foreign "RefC:idris2curl_multimsg_result,libcurl,idris2curl_compat.h"
+         "RC2:idris2curl_multimsg_result,libcurl,idris2curl_compat.h"
+prim__curlMultimsgResult : AnyPtr -> PrimIO Int
+
 ||| `CURL_GLOBAL_ALL`, per curl/curl.h.
 curlGlobalAll : Int
 curlGlobalAll = 3
@@ -355,3 +405,69 @@ curlUrlGet u (MkCURLUPart p) flags = primIO (prim__curlUrlGet u p flags)
 export
 curlUrlStrerror : HasIO io => CURLUcode -> io String
 curlUrlStrerror (MkCURLUcode c) = primIO (prim__curlUrlStrerror c)
+
+||| `Nothing` on the same allocation-failure contract as `curlEasyInit`
+||| (`curl_multi_init(3)`).
+export
+curlMultiInit : HasIO io => io (Maybe AnyPtr)
+curlMultiInit = do
+    m <- primIO prim__curlMultiInit
+    pure $ if prim__nullAnyPtr m /= 0 then Nothing else Just m
+
+export
+curlMultiCleanup : HasIO io => AnyPtr -> io CURLMcode
+curlMultiCleanup m = MkCURLMcode <$> primIO (prim__curlMultiCleanup m)
+
+export
+curlMultiAddHandle : HasIO io => AnyPtr -> AnyPtr -> io CURLMcode
+curlMultiAddHandle m h = MkCURLMcode <$> primIO (prim__curlMultiAddHandle m h)
+
+export
+curlMultiRemoveHandle : HasIO io => AnyPtr -> AnyPtr -> io CURLMcode
+curlMultiRemoveHandle m h = MkCURLMcode <$> primIO (prim__curlMultiRemoveHandle m h)
+
+export
+curlMultiStrerror : HasIO io => CURLMcode -> io String
+curlMultiStrerror (MkCURLMcode c) = primIO (prim__curlMultiStrerror c)
+
+||| RefC/rc2-only, no Chez binding -- see `prim__curlMultiPerform`'s own
+||| doc comment. Number of easy handles still transferring data, or
+||| `Nothing` if `curl_multi_perform` itself reported an error
+||| (`idris2curl_multi_perform`'s own collapsed `-1`, indistinguishable
+||| from `CURLMcode` here -- acceptable since the running-handle count
+||| the caller actually needs either way is only meaningful on success).
+export
+curlMultiPerform : HasIO io => AnyPtr -> io (Maybe Int)
+curlMultiPerform m = do
+    n <- primIO (prim__curlMultiPerform m)
+    pure $ if n < 0 then Nothing else Just n
+
+||| RefC/rc2-only, same as `curlMultiPerform`. `timeoutMs` -- how long
+||| to block waiting for activity on any handle in `m`'s own stack
+||| before returning regardless (`curl_multi_wait(3)`); the number of
+||| fds that were actually signalled, or `Nothing` on the same
+||| collapsed-error contract as `curlMultiPerform`.
+export
+curlMultiWait : HasIO io => AnyPtr -> (timeoutMs : Int) -> io (Maybe Int)
+curlMultiWait m timeoutMs = do
+    n <- primIO (prim__curlMultiWait m timeoutMs)
+    pure $ if n < 0 then Nothing else Just n
+
+||| RefC/rc2-only, no Chez binding -- see `prim__curlMultiInfoRead`'s
+||| own doc comment. `Nothing` once the message queue is empty (the
+||| ordinary, expected way this loop ends -- not an error).
+||| `(CURLMSG, AnyPtr, CURLcode)` is `(what kind of message, which easy
+||| handle it's about, that handle's own result -- only meaningful when
+||| the message is `curlmsg_DONE`, see `prim__curlMultimsgResult`'s own
+||| doc comment)`.
+export
+curlMultiInfoRead : HasIO io => AnyPtr -> io (Maybe (CURLMSG, AnyPtr, CURLcode))
+curlMultiInfoRead m = do
+    msg <- primIO (prim__curlMultiInfoRead m)
+    if prim__nullAnyPtr msg /= 0
+       then pure Nothing
+       else do
+         what <- primIO (prim__curlMultimsgMsg msg)
+         h <- primIO (prim__curlMultimsgEasyHandle msg)
+         result <- primIO (prim__curlMultimsgResult msg)
+         pure $ Just (MkCURLMSG what, h, MkCURLcode result)

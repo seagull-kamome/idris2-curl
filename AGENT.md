@@ -29,8 +29,9 @@ C codegen backend, not just the default Chez backend.
 - `examples/` — small standalone programs that exercise the bindings
   end to end, used to verify they build/link/run on Chez, upstream
   RefC, and `idris2-rc-cg`'s `rc2` backend -- except `GetInfo.idr`,
-  `UrlGet.idr`, and `VersionInfo.idr`, which are RefC/rc2-only (see
-  `doc/variadic-getinfo.md`/`doc/version-info-struct.md`)
+  `UrlGet.idr`, `VersionInfo.idr`, and `Multi.idr`, which are
+  RefC/rc2-only (see `doc/variadic-getinfo.md`/
+  `doc/version-info-struct.md`/`doc/multi-interface.md`)
 - `doc/` — implementation deep-dives, meant to let a future session
   regain context without re-deriving the design (currently:
   `const-char-ffi.md` for why a `const char *`-returning libcurl
@@ -39,7 +40,8 @@ C codegen backend, not just the default Chez backend.
   `curl_url_get` have no Chez binding at all; `version-info-struct.md`
   for why `curl_version_info` (a real C struct, not a scalar) is bound
   via per-field `csrc/` shims rather than `System.FFI`'s own
-  `Struct`/`getField`)
+  `Struct`/`getField`; `multi-interface.md` for the same output-pointer/
+  no-Chez-binding reasoning applied to `curl_multi_*`)
 - `TODO.md` — open gaps and deferred design decisions (removed once
   implemented and documented elsewhere)
 

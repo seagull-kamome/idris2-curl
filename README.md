@@ -32,9 +32,12 @@ slist-valued options), `curl_easy_perform`, `curl_easy_strerror`,
 `doc/variadic-getinfo.md`), `curl_slist_append`, `curl_slist_free_all`,
 `curl_easy_escape`, `curl_easy_unescape`, `curl_free`, `curl_version`,
 `curl_version_info` (five fields -- RefC/rc2 only, see
-`doc/version-info-struct.md`), and the `curl_url_*` URL API
-(`curl_url_get` is RefC/rc2 only, same reason as `curl_easy_getinfo`).
-See `src/Network/Curl/Raw.idr` for the
+`doc/version-info-struct.md`), the `curl_url_*` URL API (`curl_url_get`
+is RefC/rc2 only, same reason as `curl_easy_getinfo`), and enough of
+the `curl_multi_*` interface to drive several concurrent transfers to
+completion on one thread (`curl_multi_perform`/`_wait`/`_info_read` are
+RefC/rc2 only, see `doc/multi-interface.md`). See
+`src/Network/Curl/Raw.idr` for the
 full list and `src/Network/Curl/Types.idr` for the `CURLoption`/
 `CURLcode`/`CURLINFO`/`CURLUcode`/`CURLUPart` constants currently
 defined.

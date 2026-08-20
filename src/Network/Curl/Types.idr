@@ -158,3 +158,43 @@ curlupart_QUERY = MkCURLUPart 8
 public export
 curlupart_FRAGMENT : CURLUPart
 curlupart_FRAGMENT = MkCURLUPart 9
+
+||| A libcurl `CURLMcode` result from the multi interface -- a
+||| distinct enum from both `CURLcode` and `CURLUcode` in curl/multi.h.
+||| Note `CURLM_CALL_MULTI_PERFORM = -1` is the enum's own first
+||| (negative) member, so `CURLM_OK` is `0` same as `CURLcode`/
+||| `CURLUcode`, but this enum alone can carry a negative value.
+public export
+record CURLMcode where
+  constructor MkCURLMcode
+  code : Int
+
+public export
+Eq CURLMcode where
+  MkCURLMcode a == MkCURLMcode b = a == b
+
+public export
+Show CURLMcode where
+  show (MkCURLMcode c) = "CURLMcode " ++ show c
+
+public export
+curlm_OK : CURLMcode
+curlm_OK = MkCURLMcode 0
+
+||| A libcurl `CURLMSG` -- the `msg` field of a `CURLMsg` read via
+||| `curl_multi_info_read`. Only `CURLMSG_DONE` (the one message this
+||| repo currently reads meaning from) is bound; `CURLMSG_NONE` (first
+||| enum member, never actually sent) and `CURLMSG_LAST` (a sentinel,
+||| never sent either) aren't.
+public export
+record CURLMSG where
+  constructor MkCURLMSG
+  msg : Int
+
+public export
+Eq CURLMSG where
+  MkCURLMSG a == MkCURLMSG b = a == b
+
+public export
+curlmsg_DONE : CURLMSG
+curlmsg_DONE = MkCURLMSG 1

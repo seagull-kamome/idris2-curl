@@ -15,14 +15,28 @@ response body can only go to libcurl's own default (stdout) or a
 `FILE *` obtained some other way; there's no way yet to capture it into
 an Idris `String`/`Buffer`.
 
-## Multi/share/mime interfaces not started
+## `curl_multi_*` coverage is a minimal working subset
 
-`curl_multi_*` (concurrent/non-blocking transfers), `curl_share_*`
-(sharing state -- cookies, DNS cache, TLS session cache -- across
-multiple easy handles), `curl_mime_*` (multipart form data) are
-entirely unbound. Next in practical-usefulness order once callbacks
-(above) are figured out, since multi-handle use is far more compelling
-once a response body can actually be captured.
+Bound: `curl_multi_init`/`_cleanup`/`_add_handle`/`_remove_handle`/
+`_perform`/`_wait`/`_info_read`/`_strerror` -- enough to drive multiple
+concurrent transfers to completion on one thread (see
+`doc/multi-interface.md`, `examples/Multi.idr`). Not bound:
+`curl_multi_setopt` (multi-handle options -- e.g. max concurrent
+connections -- none needed yet), `curl_multi_fdset`/
+`curl_multi_socket_action` (the older/lower-level polling APIs
+`curl_multi_wait` already covers this repo's own needs instead of),
+`curl_multi_assign`/`curl_multi_get_handles`/`curl_multi_get_offt`,
+`curl_multi_waitfds`/`curl_multi_wakeup`/`curl_multi_notify_*`,
+`curl_pushheader_byname`/`curl_pushheader_bynum` (server push, HTTP/2
+only). Add as a concrete need comes up.
+
+## Share/mime interfaces not started
+
+`curl_share_*` (sharing state -- cookies, DNS cache, TLS session
+cache -- across multiple easy handles), `curl_mime_*` (multipart form
+data) are entirely unbound. Share interface is independent of the
+callback gap above; mime interface (building a multipart upload body)
+would benefit from resolving it first but doesn't strictly need it.
 
 ## Smaller easy-interface gaps
 

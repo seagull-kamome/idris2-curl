@@ -116,4 +116,69 @@ static inline char *idris2curl_version_info_ssl_version(void) {
     return (char *) (v == NULL ? "" : v);
 }
 
+static inline char *idris2curl_multi_strerror(int code) {
+    return (char *) curl_multi_strerror((CURLMcode) code);
+}
+
+/* curl_multi_perform()'s own second argument is a write-through
+ * `int *running_handles` output pointer -- collapsed to a plain
+ * return value here, same idea as idris2curl_getinfo_long above.
+ * curl_multi_perform()'s own CURLMcode result (errors regarding the
+ * whole multi stack, not any individual transfer -- see its own doc
+ * comment in curl/multi.h) is folded into the same return: -1 on
+ * anything but CURLM_OK, the running-handle count otherwise (always
+ * >= 0, so -1 is unambiguous). */
+static inline int idris2curl_multi_perform(CURLM *m) {
+    int running = 0;
+    CURLMcode rc = curl_multi_perform(m, &running);
+    return rc == CURLM_OK ? running : -1;
+}
+
+/* curl_multi_wait()'s own extra_fds/extra_nfds (additional,
+ * non-easy-handle sockets to also watch) aren't bound -- nothing this
+ * repo does yet needs to watch anything outside the multi handle's own
+ * easy handles. Its own `int *ret` (how many fds were actually
+ * signalled) is collapsed the same way idris2curl_multi_perform above
+ * collapses running_handles. */
+static inline int idris2curl_multi_wait(CURLM *m, int timeout_ms) {
+    int numfds = 0;
+    CURLMcode rc = curl_multi_wait(m, NULL, 0, timeout_ms, &numfds);
+    return rc == CURLM_OK ? numfds : -1;
+}
+
+/* curl_multi_info_read() returns CURLMsg* (NULL once the queue is
+ * empty) rather than a scalar, and its own second argument
+ * (`int *msgs_in_queue`, how many messages remain queued after this
+ * read) is another write-through output pointer -- discarded here
+ * (not currently useful: this repo's own call sites just loop calling
+ * curl_multi_info_read until it returns NULL, never needing to know
+ * the remaining count up front). The CURLMsg* itself is handed back
+ * as an opaque pointer; idris2curl_multimsg_msg/easy_handle/result
+ * below read one field each off it, same "one shim per field" idea as
+ * curl_version_info's own shims. Per curl_multi_info_read(3), the
+ * struct it points to remains valid only until curl_multi_cleanup() or
+ * the next curl_multi_info_read() call -- callers must read every
+ * field they need before either happens. */
+static inline void *idris2curl_multi_info_read(CURLM *m) {
+    int n = 0;
+    return (void *) curl_multi_info_read(m, &n);
+}
+
+static inline int idris2curl_multimsg_msg(void *msg) {
+    return msg == NULL ? -1 : (int) ((CURLMsg *) msg)->msg;
+}
+
+static inline void *idris2curl_multimsg_easy_handle(void *msg) {
+    return msg == NULL ? NULL : (void *) ((CURLMsg *) msg)->easy_handle;
+}
+
+/* `data.result` is only meaningful when `msg == CURLMSG_DONE` (per
+ * curl/multi.h's own CURLMsg doc comment) -- reading it for any other
+ * `msg` value reads the union's own other member (`data.whatever`,
+ * a `void *`) reinterpreted as a `CURLcode`, meaningless but not
+ * undefined behavior (same union, no uninitialized read). */
+static inline int idris2curl_multimsg_result(void *msg) {
+    return msg == NULL ? -1 : (int) ((CURLMsg *) msg)->data.result;
+}
+
 #endif

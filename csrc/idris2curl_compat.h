@@ -57,24 +57,42 @@ static inline char *idris2curl_url_strerror(int code) {
  * argument (allocated by libcurl, meant to be freed with curl_free()
  * once the caller's own done with it) rather than returning it
  * directly -- collapsed to a plain return value here for the same
- * reason as idris2curl_getinfo_string above. Unlike that one, this
- * leaks: the %foreign `String` return copies this pointer's own bytes
- * into a fresh Idris2-owned string right after this call returns (see
- * idris2rc2_mkString's own memcpy), but nothing downstream of that
- * copy ever gets the chance to curl_free() libcurl's own original
- * allocation -- there's no hook in a plain %foreign call for "do this
- * after the copy, before returning to Idris2 code". Deliberately
- * accepted for now: one URL part's worth of leaked bytes (rarely more
- * than a few dozen) per curl_url_get call, not unbounded, not
- * accumulating per network request the way a request-body buffer
- * would. Revisit (e.g. by splitting this into fetch/take/free step
- * functions coordinated from the Idris2 side, at the cost of thread-
- * unsafe global state) if a program ends up calling this often enough
- * for that to matter. */
+ * reason as idris2curl_getinfo_string above. This variant leaks: the
+ * %foreign `String` return copies this pointer's own bytes into a
+ * fresh Idris2-owned string right after this call returns, but
+ * nothing downstream of that copy ever gets the chance to
+ * curl_free() libcurl's own original allocation -- there's no hook
+ * in a plain %foreign call for "do this after the copy, before
+ * returning to Idris2 code". Kept only for real upstream RefC, whose
+ * own createCFunctions has a packCFType-vs-argument-drop ordering bug
+ * (see idris2-rc-cg's TODO.md, commit 2aa9b90, which fixed the same
+ * bug on rc2) that makes reading a GCAnyPtr-wrapped pointer back
+ * unsafe there -- Network.Curl.Raw's own curlUrlGet picks this path
+ * on RefC specifically, `idris2curl_url_get_raw` below everywhere
+ * else. One URL part's worth of leaked bytes (rarely more than a few
+ * dozen) per call on RefC only, not unbounded, not accumulating per
+ * network request. */
 static inline char *idris2curl_url_get(CURLU *u, int what, unsigned int flags) {
     char *part = NULL;
     CURLUcode rc = curl_url_get(u, (CURLUPart) what, &part, flags);
     return (rc == CURLUE_OK && part != NULL) ? part : (char *) "";
+}
+
+/* Raw (no-copy) variant of idris2curl_url_get above: NULL on failure
+ * instead of a static "" literal, so a non-NULL result is always a
+ * genuine libcurl allocation safe to wrap in a GCAnyPtr keyed to
+ * curl_free (Network.Curl.Raw's own curlReadAndFree) -- returning ""
+ * here instead would mean attaching that finalizer to a string
+ * literal, which crashes once curl_free() actually runs on it. Also
+ * incidentally distinguishes "part is genuinely empty" (CURLUE_OK,
+ * non-NULL, empty string) from "curl_url_get failed" (NULL) -- see
+ * TODO.md's own "curlUrlGet can't distinguish..." entry -- though
+ * Network.Curl.Raw's own curlUrlGet still collapses both to "" for
+ * now, unchanged from idris2curl_url_get's own contract above. */
+static inline void *idris2curl_url_get_raw(CURLU *u, int what, unsigned int flags) {
+    char *part = NULL;
+    CURLUcode rc = curl_url_get(u, (CURLUPart) what, &part, flags);
+    return (rc == CURLUE_OK) ? (void *) part : NULL;
 }
 
 /* curl_version_info() returns curl_version_info_data*, a real C

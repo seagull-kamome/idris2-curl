@@ -78,79 +78,22 @@ pre-emptively transcribing the whole enum. `CURLINFO_SLIST`/
 particular needs a representation decision (`Int` truncates on a
 32-bit `long` platform; `Integer` is always safe but boxed).
 
-## Deliberate small memory leaks: `curl_url_get`, `curl_easy_escape`/`curl_easy_unescape`
+## `curl_url_get`/`curl_easy_escape`/`curl_easy_unescape` still leak on RefC
 
-Every one of these hands back a libcurl-allocated string that's meant
-to be released with `curl_free()` once read. `%foreign`'s own `String`
-return already copies the bytes into a fresh Idris-owned string right
-after the call returns, but nothing downstream of that copy gets a
-chance to `curl_free()` the original -- there's no hook in a plain
-`%foreign` call for "run this after the copy, before returning to
-Idris code". See `idris2curl_url_get`'s own doc comment
-(`csrc/idris2curl_compat.h`) for the full reasoning already recorded
-there.
-
-Accepted for now: one string's worth of leaked bytes per call (rarely
-more than a few dozen), not unbounded, not accumulating per network
-request. Revisit by splitting each into fetch/take/free step functions
-coordinated from the Idris2 side (at the cost of thread-unsafe global
-state in the shim) if a program ends up calling one of these often
-enough for it to matter.
-
-**Tried and rejected**: `System.FFI`/`Prelude.IO`'s own
-`GCAnyPtr`/`onCollectAny` (attach a finalizer -- an ordinary Idris
-`IO ()` action, e.g. one that calls `curl_free` -- to a raw pointer,
-run automatically once the GC reclaims it) looked like a clean fix:
-receive the raw `char *` as a plain `AnyPtr` instead of `String`,
-`onCollectAny ptr (\p => primIO (prim__curlFree p))` to get a
-`GCAnyPtr`, then a second `%foreign` declaration typed to take a
-`GCAnyPtr` argument directly (`Compiler.RC2.Emit`/upstream
-`RefC.idr`/`Compiler.Scheme.Chez` all implement `CFGCPtr`, unwrapping
-it to the real pointer before the call) and read the string back
-(e.g. `idris2_getString, libidris2_support, idris_support.h` retyped
-from its own usual `Ptr String -> String` to `GCAnyPtr -> String`).
-
-Confirmed directly this works correctly on Chez: the finalizer fires
-strictly after the string copy, every time, across repeated runs.
-**Confirmed directly this is broken on both RefC and rc2**: the
-finalizer (`curl_free`) fires *before* the string-reading call
-actually executes -- reproduced consistently across repeated runs on
-both backends, reading back an empty string (RefC) or garbage bytes
-(rc2) instead of the escaped/decoded text.
-
-**Root cause now pinned down** (investigated in `~/projects/idris2-rc-cg`,
-not this repo): it's neither backend's own reference-counting/drop
-*ordering* pass at fault -- both independently, and correctly, drop a
-`%foreign` call's own arguments strictly *after* the call statement
-itself. The real bug is one step later: `idris2_getString(void *p) {
-return (char *)p; }` (`idris_support.c`) is a no-copy pointer
-passthrough -- the *actual* string copy only happens afterwards, when
-the raw `char *` return value is packed into a boxed Idris `String`
-(`packCFType`/`idris2rc2_mkString` on rc2, the Chez/RefC equivalent
-elsewhere). Both `Compiler.RC2.Emit` and upstream `RefC.idr`'s own
-`createCFunctions` emitted that packing step *after* dropping the
-call's own arguments -- so when the returned pointer aliases memory
-owned by one of those arguments (exactly this `GCAnyPtr` case), the
-arg's drop can free it via its finalizer before the packing step ever
-reads through it: a use-after-free, not a premature-drop-before-call
-ordering bug as originally suspected.
-
-**Fixed on rc2** (`idris2-rc-cg` commit `2aa9b90`, "Pack a %foreign
-return value before dropping its own GCPtr args" -- pack the return
-value into a temp before the argument drops, not after; verified via
-a `GCAnyPtr`-argument/`String`-return regression test,
-`rc2/tests/Test26GCPtrAliasString.idr`). **Still broken on real
-upstream RefC** as of this writing: `idris2-src/src/Compiler/RefC/RefC.idr`
-has the byte-for-byte identical ordering bug, but that's a read-only
-reference clone in `idris2-rc-cg`, out of scope to patch there --
-would need reporting/fixing upstream (idris-lang/Idris2) to land.
-
-Given this repo targets all three backends and the leak-accepting
-design above already works correctly everywhere, **not adopting this
-GCAnyPtr approach yet**: switching to it now would trade a harmless
-few-dozen-byte leak for actually-wrong output on RefC specifically,
-until the upstream fix lands. Revisit once RefC's own
-`createCFunctions` gets the same packCFType-before-drop fix upstream.
+All three hand back a libcurl-allocated string, meant to be released
+with `curl_free()` once read. Fixed leak-free on Chez and rc2 via a
+`codegen`-dispatched `GCAnyPtr`/`onCollectAny` read path (see
+`curlReadAndFree`'s own doc comment, `src/Network/Curl/Raw.idr`,
+and `idris2curl_url_get_raw`'s, `csrc/idris2curl_compat.h`) -- real
+upstream RefC still gets the original small-leak path
+(`prim__curlEasyEscapeLeaky`-style bindings) instead, since
+`idris2-src/src/Compiler/RefC/RefC.idr`'s own `createCFunctions` has
+an unfixed packCFType-vs-argument-drop ordering bug that makes reading
+a `GCAnyPtr` back unsafe there (root-caused and fixed on rc2 in
+`idris2-rc-cg` commit `2aa9b90`; would need reporting/fixing upstream,
+idris-lang/Idris2, to drop the RefC branch entirely). One string's
+worth of leaked bytes per call on RefC only (rarely more than a few
+dozen), not unbounded, not accumulating per network request.
 
 ## `curlUrlGet` can't distinguish "empty part" from "curl_url_get failed"
 
@@ -161,3 +104,7 @@ back as `""`. Not encountered in practice yet (every part
 `examples/UrlGet.idr` reads is always present for the URLs tested), but
 would need the shim reworked to return `(CURLUcode, String)` (e.g. via
 an output-argument pointer of its own, or two shims) to fix properly.
+`idris2curl_url_get_raw` (added alongside the leak fix above) already
+distinguishes the two cases at the C level (`NULL` vs. a real,
+possibly-empty allocation) -- `Network.Curl.Raw`'s own `curlUrlGet`
+just still collapses both back to `""` on top of it, unchanged.

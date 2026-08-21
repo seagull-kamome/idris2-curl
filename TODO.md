@@ -116,17 +116,41 @@ strictly after the string copy, every time, across repeated runs.
 finalizer (`curl_free`) fires *before* the string-reading call
 actually executes -- reproduced consistently across repeated runs on
 both backends, reading back an empty string (RefC) or garbage bytes
-(rc2) instead of the escaped/decoded text. Root cause not
-pinned down further (not clear yet whether this is an rc2-specific
-reference-counting bug or one inherited from upstream RefC's own
-`CFGCPtr` handling -- both are reference-counted backends, unlike
-Chez's own tracing GC, and the symptom looks like the `GCAnyPtr`
-argument's own reference gets dropped -- and its finalizer run -- as
-soon as it's evaluated for the call, not after the call itself
-returns). Given this fails on two of this repo's three target
-backends, not worth pursuing further over the accepted small leak
-above unless a future session narrows down and fixes the underlying
-drop-ordering bug.
+(rc2) instead of the escaped/decoded text.
+
+**Root cause now pinned down** (investigated in `~/projects/idris2-rc-cg`,
+not this repo): it's neither backend's own reference-counting/drop
+*ordering* pass at fault -- both independently, and correctly, drop a
+`%foreign` call's own arguments strictly *after* the call statement
+itself. The real bug is one step later: `idris2_getString(void *p) {
+return (char *)p; }` (`idris_support.c`) is a no-copy pointer
+passthrough -- the *actual* string copy only happens afterwards, when
+the raw `char *` return value is packed into a boxed Idris `String`
+(`packCFType`/`idris2rc2_mkString` on rc2, the Chez/RefC equivalent
+elsewhere). Both `Compiler.RC2.Emit` and upstream `RefC.idr`'s own
+`createCFunctions` emitted that packing step *after* dropping the
+call's own arguments -- so when the returned pointer aliases memory
+owned by one of those arguments (exactly this `GCAnyPtr` case), the
+arg's drop can free it via its finalizer before the packing step ever
+reads through it: a use-after-free, not a premature-drop-before-call
+ordering bug as originally suspected.
+
+**Fixed on rc2** (`idris2-rc-cg` commit `2aa9b90`, "Pack a %foreign
+return value before dropping its own GCPtr args" -- pack the return
+value into a temp before the argument drops, not after; verified via
+a `GCAnyPtr`-argument/`String`-return regression test,
+`rc2/tests/Test26GCPtrAliasString.idr`). **Still broken on real
+upstream RefC** as of this writing: `idris2-src/src/Compiler/RefC/RefC.idr`
+has the byte-for-byte identical ordering bug, but that's a read-only
+reference clone in `idris2-rc-cg`, out of scope to patch there --
+would need reporting/fixing upstream (idris-lang/Idris2) to land.
+
+Given this repo targets all three backends and the leak-accepting
+design above already works correctly everywhere, **not adopting this
+GCAnyPtr approach yet**: switching to it now would trade a harmless
+few-dozen-byte leak for actually-wrong output on RefC specifically,
+until the upstream fix lands. Revisit once RefC's own
+`createCFunctions` gets the same packCFType-before-drop fix upstream.
 
 ## `curlUrlGet` can't distinguish "empty part" from "curl_url_get failed"
 

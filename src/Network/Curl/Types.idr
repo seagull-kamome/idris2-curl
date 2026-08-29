@@ -44,6 +44,19 @@ public export
 curlopt_HTTPHEADER : CURLoption
 curlopt_HTTPHEADER = MkCURLoption 10023 -- CURLOPTTYPE_OBJECTPOINT + 23
 
+||| The `FILE *` (or, per `curl_easy_setopt(3)`, any pointer the write
+||| callback itself agrees on the meaning of) libcurl's own *default*
+||| write callback writes response body bytes to when
+||| `CURLOPT_WRITEFUNCTION` is left unset -- `fwrite(ptr, size, nmemb,
+||| (FILE *) this)`, i.e. `CURLOPTTYPE_CBPOINT` (`CURLOPTTYPE_OBJECTPOINT`
+||| itself, curl/curl.h's own `#define`), not a callback in its own
+||| right. See `Network.Curl.Raw`'s own `curlMemstreamOpen`/`Filep` for
+||| why this is enough to capture a response body into Idris without
+||| ever binding `CURLOPT_WRITEFUNCTION` itself.
+public export
+curlopt_WRITEDATA : CURLoption
+curlopt_WRITEDATA = MkCURLoption 10001 -- CURLOPTTYPE_CBPOINT + 1
+
 ||| A libcurl `CURLINFO` -- the value passed as `curl_easy_getinfo`'s
 ||| own second argument. Every value below is `CURLINFO_*`'s own
 ||| `CURLINFO_STRING`/`CURLINFO_LONG`/`CURLINFO_DOUBLE`/`CURLINFO_SLIST`/

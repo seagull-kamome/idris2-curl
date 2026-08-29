@@ -28,7 +28,7 @@ main = do
 
     Just h1 <- curlEasyInit
         | Nothing => putStrLn "curl_easy_init failed"
-    MkCURLcode 0 <- curlEasySetoptSlist h1 curlopt_SHARE sh
+    MkCURLcode 0 <- curlEasySetoptPointer h1 curlopt_SHARE sh
         | c2 => putStrLn ("setopt SHARE failed: " ++ show c2)
     MkCURLcode 0 <- curlEasySetoptString h1 curlopt_URL "http://example.com"
         | c3 => putStrLn ("setopt URL failed: " ++ show c3)
@@ -38,7 +38,7 @@ main = do
 
     Just h2 <- curlEasyInit
         | Nothing => putStrLn "curl_easy_init failed"
-    MkCURLcode 0 <- curlEasySetoptSlist h2 curlopt_SHARE sh
+    MkCURLcode 0 <- curlEasySetoptPointer h2 curlopt_SHARE sh
         | c4 => putStrLn ("setopt SHARE failed: " ++ show c4)
     MkCURLcode 0 <- curlEasySetoptString h2 curlopt_URL "http://example.org"
         | c5 => putStrLn ("setopt URL failed: " ++ show c5)
@@ -74,7 +74,7 @@ main = do
     MkCURLcode 0 <- curlMimeData part2 "world"
         | c10 => putStrLn ("curl_mime_data failed: " ++ show c10)
 
-    MkCURLcode 0 <- curlEasySetoptSlist h3 curlopt_MIMEPOST mime
+    MkCURLcode 0 <- curlEasySetoptPointer h3 curlopt_MIMEPOST mime
         | c11 => putStrLn ("setopt MIMEPOST failed: " ++ show c11)
     MkCURLcode 0 <- curlEasySetoptString h3 curlopt_URL "http://example.com"
         | c12 => putStrLn ("setopt URL failed: " ++ show c12)

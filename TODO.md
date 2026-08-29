@@ -9,11 +9,20 @@ this file stays the changelog/gap tracker, not a duplicate of either.
 Any `CURLOPT_*FUNCTION` option (`CURLOPT_WRITEFUNCTION`,
 `CURLOPT_HEADERFUNCTION`, `CURLOPT_READFUNCTION`, ...) needs passing an
 Idris function to C as a function pointer. `System.FFI` has no support
-for this out of the box, and it hasn't been investigated further --
-deliberately deferred rather than worked around. Without it, a
-response body can only go to libcurl's own default (stdout) or a
-`FILE *` obtained some other way; there's no way yet to capture it into
-an Idris `String`/`Buffer`.
+for this out of the box -- deliberately deferred rather than worked
+around; the eventual approach is a single fixed C-side callback handing
+data to Idris over a `Chan`, not an FFI closure trick.
+
+For the common "capture the whole response body" case specifically,
+`CURLOPT_WRITEFUNCTION` itself turns out not to be necessary --
+`CURLOPT_WRITEDATA` (an ordinary object-pointer option) pointed at an
+`open_memstream(3)` `FILE *` redirects libcurl's own *default* writer
+into memory with no callback at all. See `doc/memstream-capture.md` and
+`Network.Curl.Raw`'s own `curlMemstreamOpen`/`curlMemstreamToBuffer`/
+`curlMemstreamToString`/`curlMemstreamToTextBuffer`. Still open:
+`CURLOPT_HEADERFUNCTION`/`CURLOPT_READFUNCTION` and genuinely streaming
+(rather than capture-then-read) body handling, which do need a real
+callback.
 
 ## `curl_multi_*` coverage is a minimal working subset
 

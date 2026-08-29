@@ -11,6 +11,9 @@
  * -Wdiscarded-qualifiers on a direct %foreign binding. */
 
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include <curl/curl.h>
 #include <curl/header.h>
@@ -283,6 +286,99 @@ static inline char *idris2curl_header_name(void *h) {
 
 static inline char *idris2curl_header_value(void *h) {
     return h == NULL ? (char *) "" : ((struct curl_header *) h)->value;
+}
+
+/* Captures a response body into memory without ever binding
+ * CURLOPT_WRITEFUNCTION (still not bound -- see TODO.md's own
+ * "callback options" entry, and idris2-rc-cg's Chan-based design note
+ * for when it eventually is). libcurl's own *default* write callback
+ * -- always in effect when CURLOPT_WRITEFUNCTION is left unset -- is
+ * just `fwrite(ptr, size, nmemb, (FILE *) CURLOPT_WRITEDATA)`.
+ * CURLOPT_WRITEDATA is an ordinary object-pointer option (no callback
+ * of our own to hand libcurl), so pointing it at an in-memory stream
+ * from POSIX's own open_memstream(3) redirects the existing default
+ * writer into a growable heap buffer instead of the process's real
+ * stdout -- see doc/memstream-capture.md for the full design. */
+struct idris2curl_memstream {
+    FILE *fp;
+    char *buf;
+    size_t len;
+};
+
+/* NULL on allocation/open_memstream(3) failure. */
+static inline void *idris2curl_memstream_open(void) {
+    struct idris2curl_memstream *m = malloc(sizeof *m);
+    if (m == NULL) return NULL;
+    m->buf = NULL;
+    m->len = 0;
+    m->fp = open_memstream(&m->buf, &m->len);
+    if (m->fp == NULL) {
+        free(m);
+        return NULL;
+    }
+    return (void *) m;
+}
+
+/* The FILE* to hand to curlEasySetoptPointer h curlopt_WRITEDATA. */
+static inline void *idris2curl_memstream_filep(void *m) {
+    return m == NULL ? NULL : (void *) ((struct idris2curl_memstream *) m)->fp;
+}
+
+/* Flushes and finalizes buf/len -- call exactly once, after
+ * curl_easy_perform returns, before any _data/_size/_free call below.
+ * open_memstream(3) guarantees buf is NUL-terminated on close (the
+ * NUL itself isn't counted in len), so a NUL-terminated read (
+ * Data.String.FFI.ptrToString, idris2rc2_String_to_TextBuffer) is
+ * always safe here even without threading len through -- only the
+ * exact-byte-count Buffer path (idris2curl_memstream_copy_into below)
+ * actually needs len, for embedded-NUL-safety. */
+static inline void idris2curl_memstream_close(void *m) {
+    if (m != NULL) fclose(((struct idris2curl_memstream *) m)->fp);
+}
+
+/* NULL only if idris2curl_memstream_open itself already returned NULL
+ * -- open_memstream(3) always leaves buf non-NULL (even for a
+ * zero-byte body) once fp itself opened successfully. */
+static inline void *idris2curl_memstream_data(void *m) {
+    return m == NULL ? NULL : (void *) ((struct idris2curl_memstream *) m)->buf;
+}
+
+static inline long idris2curl_memstream_size(void *m) {
+    return m == NULL ? -1 : (long) ((struct idris2curl_memstream *) m)->len;
+}
+
+/* Releases both the handle struct and the captured buffer itself
+ * (plain free(), not curl_free() -- open_memstream's own buffer is a
+ * regular glibc malloc allocation, unrelated to libcurl's allocator).
+ * Call only after every _data/_size read is done. */
+static inline void idris2curl_memstream_free(void *m) {
+    if (m != NULL) {
+        struct idris2curl_memstream *ms = (struct idris2curl_memstream *) m;
+        free(ms->buf);
+        free(ms);
+    }
+}
+
+/* Idris2's own `Buffer` type -- RefC's support/refc/buffer.c and
+ * idris2-rc-cg's rc2/support/rc2/buffer.c (explicitly "ported from
+ * RefC's support/refc/buffer.c", operating on "purely the raw
+ * malloc'd buffer") both deliberately share this exact layout, so a
+ * `Buffer`-returning/-taking %foreign value reaching this shim as a
+ * bare AnyPtr on either backend is safe to reinterpret this way. Not
+ * reachable from Chez, whose own `Buffer` has no such C struct at all
+ * (`blodwen-buffer-*` operate on a Scheme-native bytevector) -- no
+ * `"C:..."` target below, RefC/rc2-only like every other struct-layout
+ * shim in this file. The one length-bounded, embedded-NUL-safe copy
+ * path in this whole capture design: every other read here
+ * (ptrToString, idris2rc2_String_to_TextBuffer) is NUL-terminated. */
+struct idris2curl_Buffer {
+    int size;
+    char data[];
+};
+
+static inline void idris2curl_memstream_copy_into_buffer(void *m, void *buf) {
+    struct idris2curl_memstream *ms = (struct idris2curl_memstream *) m;
+    memcpy(((struct idris2curl_Buffer *) buf)->data, ms->buf, ms->len);
 }
 
 #endif

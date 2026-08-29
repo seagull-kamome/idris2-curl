@@ -35,9 +35,11 @@ C codegen backend, not just the default Chez backend.
   RefC, and `idris2-rc-cg`'s `rc2` backend -- except `GetInfo.idr`,
   `UrlGet.idr`, `VersionInfo.idr`, `Multi.idr`, and `Header.idr`, which
   are RefC/rc2-only (see `doc/variadic-getinfo.md`/
-  `doc/version-info-struct.md`/`doc/multi-interface.md`), and
-  `GetInfoOfft.idr`, which is rc2-only (not even upstream RefC -- see
-  `doc/variadic-getinfo.md`'s own `CURLINFO_OFF_T`/`Int64` section)
+  `doc/version-info-struct.md`/`doc/multi-interface.md`), `GetCapture.idr`
+  (`doc/memstream-capture.md`), and `GetInfoOfft.idr`/
+  `GetCaptureText.idr`, which are rc2-only (not even upstream RefC --
+  see `doc/variadic-getinfo.md`'s own `CURLINFO_OFF_T`/`Int64` section,
+  `doc/memstream-capture.md`'s own `Data.TextBuffer` section)
 - `doc/` — implementation deep-dives, meant to let a future session
   regain context without re-deriving the design (currently:
   `const-char-ffi.md` for why a `const char *`-returning libcurl
@@ -51,7 +53,10 @@ C codegen backend, not just the default Chez backend.
   `int-width-pitfall.md` for why a negative/sentinel `Int` `%foreign`
   argument (e.g. `CURL_ZERO_TERMINATED`) isn't safe on this project's
   three backends -- `Int`'s own width differs by backend, and `Int64`
-  isn't a portable fix either)
+  isn't a portable fix either; `memstream-capture.md` for capturing a
+  response body into a `Buffer`/`String`/`TextBuffer` -- one copy each
+  -- without binding `CURLOPT_WRITEFUNCTION`, via `CURLOPT_WRITEDATA`
+  and `open_memstream(3)`)
 - `TODO.md` — open gaps and deferred design decisions (removed once
   implemented and documented elsewhere)
 

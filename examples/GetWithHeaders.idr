@@ -23,7 +23,7 @@ main = do
     let headers = curlSlistEmpty
     headers <- curlSlistAppend headers "X-Idris2-Curl: phase1"
 
-    MkCURLcode 0 <- curlEasySetoptSlist h curlopt_HTTPHEADER headers
+    MkCURLcode 0 <- curlEasySetoptPointer h curlopt_HTTPHEADER headers
         | c2 => putStrLn ("setopt HTTPHEADER failed: " ++ show c2)
     MkCURLcode 0 <- curlEasySetoptString h curlopt_URL "http://example.com"
         | c3 => putStrLn ("setopt URL failed: " ++ show c3)

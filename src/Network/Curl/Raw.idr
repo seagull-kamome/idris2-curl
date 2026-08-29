@@ -8,6 +8,7 @@ module Network.Curl.Raw
 -- exercise curl_easy's "init, setopt, perform, cleanup" lifecycle.
 
 import Data.Buffer
+import Data.So
 import Data.String.FFI
 import Data.TextBuffer
 import System.FFI
@@ -994,10 +995,14 @@ curlMemstreamToString m = do
 ||| One copy, via `Data.TextBuffer.fromRawUtf8`'s direct raw-bytes
 ||| decode -- no intermediate `String`. Same NUL-terminated-read caveat
 ||| as `curlMemstreamToString` above. Call `curlMemstreamClose` first.
+||| The NULL check here isn't just defensive: it's also where
+||| `fromRawUtf8`'s own `NonNullPtr` proof obligation actually gets
+||| discharged, via `Data.So.choose` -- `fromRawUtf8` itself has no
+||| other way to be called.
 export
 curlMemstreamToTextBuffer : HasIO io => AnyPtr -> io (Maybe TextBuffer)
 curlMemstreamToTextBuffer m = do
     raw <- primIO (prim__curlMemstreamData m)
-    if prim__nullAnyPtr raw /= 0
-       then pure Nothing
-       else Just <$> liftIO (fromRawUtf8 raw)
+    case choose (prim__nullAnyPtr raw == 0) of
+         Right _  => pure Nothing
+         Left prf => Just <$> liftIO (fromRawUtf8 raw prf)

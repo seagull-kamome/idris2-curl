@@ -1,6 +1,8 @@
 # idris2-curl
 
-Minimal, dependency-free libcurl FFI bindings for Idris2.
+Minimal libcurl FFI bindings for Idris2, no third-party dependency
+besides `rc2base` (`idris2-rc-cg`'s own shared RefC/rc2 runtime helper
+library).
 
 ## Why this exists
 

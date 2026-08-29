@@ -62,3 +62,27 @@ directly either), and every field added after `CURLVERSION_FIRST`
 shim + `Network.Curl.Raw` binding pair for any of these as a concrete
 need comes up, same as `Network.Curl.Types`'s own `curlinfo_*`/
 `curlopt_*` constants.
+
+## String fields that can genuinely be `NULL`: raw pointer + `ptrToString`, not `""`-substitution
+
+`version`/`host` above always substitute `""` for a `NULL` field at the
+C-shim level -- fine, since libcurl always sets both. `ssl_version`
+doesn't hold that guarantee: per `curl_version_info(3)`, it's `NULL`
+whenever libcurl was built without SSL support, not merely an empty
+string. Substituting `""` there would silently conflate "no SSL
+backend" with a name that's empty (never actually happens, but the
+distinction is the whole point of the field). So
+`idris2curl_version_info_ssl_version` hands back the raw pointer
+unchanged instead (`csrc/idris2curl_compat.h`), and
+`Network.Curl.Raw`'s own `curlVersionInfoSslVersion` reads it through
+`Data.String.FFI.ptrToString` (`rc2base`'s cross-backend, non-owning
+`AnyPtr -> Maybe String` read -- see that module's own doc comment,
+and `curlUrlGet`/`curlSlistToList` for the same tool used elsewhere),
+returning `Maybe String` rather than `String`.
+
+This is the house pattern for any *future* struct-field string read
+too: prefer a raw-pointer shim + `ptrToString` on the Idris side over
+`""`-substitution in C, whenever the field's own `NULL` genuinely means
+something the shim shouldn't discard -- reach for the `""`-substitution
+shortcut only when the field is documented as always-set (`version`/
+`host` here), same judgement call already made for both of them.

@@ -46,12 +46,13 @@ curlopt_HTTPHEADER = MkCURLoption 10023 -- CURLOPTTYPE_OBJECTPOINT + 23
 
 ||| A libcurl `CURLINFO` -- the value passed as `curl_easy_getinfo`'s
 ||| own second argument. Every value below is `CURLINFO_*`'s own
-||| `CURLINFO_STRING`/`CURLINFO_LONG`/`CURLINFO_DOUBLE` type tag (per
-||| curl/curl.h) plus the info's own small ordinal, same construction
-||| as `CURLoption` above. Only the three type tags this module's own
-||| `curlEasyGetinfo*` functions (`Network.Curl.Raw`) support are
-||| represented here -- `CURLINFO_SLIST`/`CURLINFO_OFF_T`/
-||| `CURLINFO_SOCKET`-tagged infos aren't bound yet.
+||| `CURLINFO_STRING`/`CURLINFO_LONG`/`CURLINFO_DOUBLE`/`CURLINFO_SLIST`/
+||| `CURLINFO_OFF_T`/`CURLINFO_SOCKET` type tag (per curl/curl.h) plus
+||| the info's own small ordinal, same construction as `CURLoption`
+||| above. All six tags now have a matching `curlEasyGetinfo*` function
+||| (`Network.Curl.Raw`); only a hand-picked handful of the several
+||| hundred `CURLINFO_*` values libcurl defines are represented here --
+||| add more as a concrete need comes up.
 public export
 record CURLINFO where
   constructor MkCURLINFO
@@ -92,6 +93,31 @@ curlinfo_CONTENT_TYPE = MkCURLINFO 1048594 -- CURLINFO_STRING + 18
 public export
 curlinfo_REDIRECT_COUNT : CURLINFO
 curlinfo_REDIRECT_COUNT = MkCURLINFO 2097172 -- CURLINFO_LONG + 20
+
+||| First `CURLINFO_OFF_T`-tagged constant bound -- see
+||| `Network.Curl.Raw`'s own `curlEasyGetinfoOfft` for why `off_t`
+||| itself is represented as `Int64` here (`curl_off_t` is always a
+||| real 64-bit signed integer in libcurl, regardless of the host
+||| platform's own `long` width).
+public export
+curlinfo_SIZE_DOWNLOAD_T : CURLINFO
+curlinfo_SIZE_DOWNLOAD_T = MkCURLINFO 6291464 -- CURLINFO_OFF_T + 8
+
+||| First `CURLINFO_SLIST`-tagged constant bound -- see
+||| `Network.Curl.Raw`'s own `curlEasyGetinfoSlist`/`curlSlistToList`.
+||| Per `curl_easy_getinfo(3)`, the caller owns the returned list and
+||| must release it with `curlSlistFreeAll` once done.
+public export
+curlinfo_COOKIELIST : CURLINFO
+curlinfo_COOKIELIST = MkCURLINFO 4194332 -- CURLINFO_SLIST + 28
+
+||| First `CURLINFO_SOCKET`-tagged constant bound -- see
+||| `Network.Curl.Raw`'s own `curlEasyGetinfoSocket`. `curl_socket_t`
+||| is a plain C `int` on every non-Windows platform (curl/curl.h),
+||| so `Int` is an exact fit, not an approximation.
+public export
+curlinfo_ACTIVESOCKET : CURLINFO
+curlinfo_ACTIVESOCKET = MkCURLINFO 5242924 -- CURLINFO_SOCKET + 44
 
 ||| A `CURLUcode` result from the URL API (`curl_url_get`/
 ||| `curl_url_set`) -- a distinct enum from `CURLcode` in curl/curl.h

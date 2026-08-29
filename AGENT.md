@@ -18,8 +18,12 @@ C codegen backend, not just the default Chez backend.
 
 ## Layout
 
-- `package.ipkg` — library package (`depends = base, contrib` only;
-  deliberately no third-party dependency)
+- `package.ipkg` — library package (`depends = base, contrib,
+  rc2base`; `rc2base` -- `idris2-rc-cg`'s own shared RefC/rc2 runtime
+  helper library, checked out as a sibling repo -- is the one
+  exception to an otherwise dependency-free design, needed for
+  `Data.String.FFI.ptrToString`'s cross-backend `AnyPtr -> Maybe
+  String` read, see `curlUrlGet`'s own doc comment)
 - `src/Network/Curl/Types.idr` — `CURLcode`/`CURLoption` wrapper
   records and hand-written constants (no `%runElab` deriving)
 - `src/Network/Curl/Raw.idr` — direct `%foreign "C:curl_*,libcurl,curl/curl.h"`
@@ -31,7 +35,9 @@ C codegen backend, not just the default Chez backend.
   RefC, and `idris2-rc-cg`'s `rc2` backend -- except `GetInfo.idr`,
   `UrlGet.idr`, `VersionInfo.idr`, `Multi.idr`, and `Header.idr`, which
   are RefC/rc2-only (see `doc/variadic-getinfo.md`/
-  `doc/version-info-struct.md`/`doc/multi-interface.md`)
+  `doc/version-info-struct.md`/`doc/multi-interface.md`), and
+  `GetInfoOfft.idr`, which is rc2-only (not even upstream RefC -- see
+  `doc/variadic-getinfo.md`'s own `CURLINFO_OFF_T`/`Int64` section)
 - `doc/` — implementation deep-dives, meant to let a future session
   regain context without re-deriving the design (currently:
   `const-char-ffi.md` for why a `const char *`-returning libcurl
@@ -96,8 +102,11 @@ diffのみで成否判定できるようにする。
 
 ## Build & test
 
-Default Chez backend:
+Default Chez backend (needs `rc2base` on the package path -- checked
+out as a sibling `idris2-rc-cg` repo, installed per its own
+`libs/rc2base/tests/verify.sh`):
 ```sh
+export IDRIS2_PACKAGE_PATH="../idris2-rc-cg/libs/rc2base/.local-install/idris2-0.8.0"
 idris2 --build package.ipkg
 ```
 
@@ -107,9 +116,10 @@ install the library into a local prefix first -- the default Idris2
 package location lives in a read-only nix store here. `csrc/` (see
 below) must be on the include path for every backend:
 ```sh
+export IDRIS2_PACKAGE_PATH="../idris2-rc-cg/libs/rc2base/.local-install/idris2-0.8.0"
 IDRIS2_PREFIX="$(pwd)/.local-install" idris2 --install package.ipkg
 export IDRIS2_CFLAGS="-Icsrc"
-IDRIS2_PREFIX="$(pwd)/.local-install" idris2 -p curl -o get examples/Get.idr
+IDRIS2_PREFIX="$(pwd)/.local-install" idris2 -p curl -p rc2base -o get examples/Get.idr
 ```
 `examples/GetInfo.idr` is RefC/rc2-only -- it has no Chez `%foreign`
 target at all (`doc/variadic-getinfo.md`) and fails to build here.
@@ -120,18 +130,19 @@ been upstreamed):
 ```sh
 export IDRIS2_CFLAGS="-Icsrc"
 export IDRIS2_LDLIBS="$(pkg-config --libs libcurl)"
-IDRIS2_PREFIX="$(pwd)/.local-install" idris2 --cg refc -p curl -o get_refc examples/Get.idr
+IDRIS2_PREFIX="$(pwd)/.local-install" idris2 --cg refc -p curl -p rc2base -o get_refc examples/Get.idr
 ```
 
 Against `idris2-rc-cg`'s rc2 backend (requires that repo checked out
-as a sibling directory, its own `env.sh` sourced, and `libcurl`/
-`curl.h` available, e.g. via `nix-shell -p curl`):
+as a sibling directory, its own `env.sh` sourced, `rc2base` installed
+per its own `libs/rc2base/tests/verify.sh`, and `libcurl`/`curl.h`
+available, e.g. via `nix-shell -p curl`):
 ```sh
 source ../idris2-rc-cg/env.sh
-export IDRIS2_PACKAGE_PATH="$IDRIS2_PACKAGE_PATH:$(pwd)/.local-install/idris2-0.8.0"
-export IDRIS2_CFLAGS="-Icsrc"
-export IDRIS2_LDFLAGS="$(pkg-config --libs-only-L libcurl)"
-../idris2-rc-cg/rc2/build/exec/idris2-rc2 --cg rc2 -p curl -o get_rc2 examples/Get.idr
+export IDRIS2_PACKAGE_PATH="$IDRIS2_PACKAGE_PATH:$(pwd)/.local-install/idris2-0.8.0:../idris2-rc-cg/libs/rc2base/.local-install/idris2-0.8.0"
+export IDRIS2_CFLAGS="-Icsrc -I../idris2-rc-cg/libs/rc2base/.local-install/idris2-0.8.0/rc2base-0.1.0/lib -I../idris2-rc-cg/install/idris2-0.8.0/support"
+export IDRIS2_LDFLAGS="$(pkg-config --libs-only-L libcurl) -L../idris2-rc-cg/libs/rc2base/.local-install/idris2-0.8.0/rc2base-0.1.0/lib"
+../idris2-rc-cg/rc2/build/exec/idris2-rc2 --cg rc2 -p curl -p rc2base -o get_rc2 examples/Get.idr
 ```
 `-lcurl` itself no longer needs `IDRIS2_LDLIBS` set by hand under rc2
 -- see `doc/const-char-ffi.md`'s own "Linker caveat" section for the

@@ -25,4 +25,4 @@ main = do
     putStrLn ("version_num: " ++ show n)
     putStrLn ("host: " ++ host)
     putStrLn ("features has SSL: " ++ show ((features .&. 4) /= 0))
-    putStrLn ("ssl_version: " ++ ssl)
+    putStrLn ("ssl_version: " ++ show ssl)

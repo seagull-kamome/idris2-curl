@@ -29,10 +29,21 @@ main = do
     url <- curlEasyGetinfoString h curlinfo_EFFECTIVE_URL
     ctype <- curlEasyGetinfoString h curlinfo_CONTENT_TYPE
     totalTime <- curlEasyGetinfoDouble h curlinfo_TOTAL_TIME
+    activeSocket <- curlEasyGetinfoSocket h curlinfo_ACTIVESOCKET
     putStrLn ("response code: " ++ show code)
     putStrLn ("effective url: " ++ url)
     putStrLn ("content type: " ++ ctype)
     putStrLn ("total time: " ++ show totalTime)
+    putStrLn ("active socket is valid fd: " ++ show (activeSocket >= 0))
+
+    -- No cookies set on this handle, so an empty list is expected --
+    -- exercises the CURLINFO_SLIST read path itself, not cookie
+    -- content. Caller-owned per curl_easy_getinfo(3): must be released
+    -- with curlSlistFreeAll, unlike every other getinfo tag above.
+    cookieSlist <- curlEasyGetinfoSlist h curlinfo_COOKIELIST
+    cookies <- curlSlistToList cookieSlist
+    putStrLn ("cookie list: " ++ show cookies)
+    curlSlistFreeAll cookieSlist
 
     curlEasyCleanup h
     curlGlobalCleanup

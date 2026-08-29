@@ -10,6 +10,8 @@
  * qualifier explicitly, instead of tripping -Werror's own
  * -Wdiscarded-qualifiers on a direct %foreign binding. */
 
+#include <stdint.h>
+
 #include <curl/curl.h>
 #include <curl/header.h>
 
@@ -49,6 +51,60 @@ static inline double idris2curl_getinfo_double(CURL *h, int info) {
     return v;
 }
 
+/* CURLINFO_OFF_T-tagged infos write through a `curl_off_t *` --
+ * `curl_off_t` is always a real 64-bit signed integer in libcurl
+ * itself (curl/system.h), independent of the host platform's own
+ * `long` width, so the shim returns `int64_t` (Idris2's own `Int64`
+ * %foreign marshaling convention -- Compiler.RefC.RefC's own
+ * `cTypeOfCFType CFInt64 = "int64_t"`) rather than `long`. */
+static inline int64_t idris2curl_getinfo_offt(CURL *h, int info) {
+    curl_off_t v = 0;
+    curl_easy_getinfo(h, (CURLINFO) info, &v);
+    return (int64_t) v;
+}
+
+/* CURLINFO_SLIST-tagged infos (e.g. CURLINFO_COOKIELIST) write
+ * through a `struct curl_slist **` -- handed back as an opaque
+ * pointer, same "collapse to a scalar return, read fields via
+ * idris2curl_slist_data/_next below" idea as idris2curl_multi_info_read
+ * above. Per curl_easy_getinfo(3), the caller owns the returned list
+ * and must release it with curl_slist_free_all() once done -- unlike
+ * every other getinfo tag here, whose value is owned internally by
+ * libcurl and never freed by the caller. */
+static inline void *idris2curl_getinfo_slist(CURL *h, int info) {
+    struct curl_slist *v = NULL;
+    curl_easy_getinfo(h, (CURLINFO) info, &v);
+    return (void *) v;
+}
+
+/* struct curl_slist's own two fields, one shim each, same "one shim
+ * per field" idea as idris2curl_version_info_/idris2curl_multimsg_
+ * above. `data` is read through Data.String.FFI's own `ptrToString`
+ * on the Idris side -- a bare copy, no curl_free/GC registration,
+ * since ownership of every node's own `data` belongs to the list as a
+ * whole (released in one shot by curl_slist_free_all(), never per
+ * node). */
+static inline char *idris2curl_slist_data(void *node) {
+    return node == NULL ? NULL : ((struct curl_slist *) node)->data;
+}
+
+static inline void *idris2curl_slist_next(void *node) {
+    return node == NULL ? NULL : (void *) ((struct curl_slist *) node)->next;
+}
+
+/* CURLINFO_SOCKET-tagged infos (e.g. CURLINFO_ACTIVESOCKET) write
+ * through a `curl_socket_t *` -- `curl_socket_t` is a plain C `int` on
+ * every non-Windows platform (curl/curl.h's own typedef), so this
+ * collapses the same way idris2curl_getinfo_long does, no width
+ * decision needed unlike off_t above. `CURL_SOCKET_BAD` (libcurl's own
+ * "no such socket" sentinel, `-1` cast to `curl_socket_t`) survives
+ * this cast unchanged, so a caller can still recognize it. */
+static inline int idris2curl_getinfo_socket(CURL *h, int info) {
+    curl_socket_t v = 0;
+    curl_easy_getinfo(h, (CURLINFO) info, &v);
+    return (int) v;
+}
+
 static inline char *idris2curl_url_strerror(int code) {
     return (char *) curl_url_strerror((CURLUcode) code);
 }
@@ -57,38 +113,23 @@ static inline char *idris2curl_url_strerror(int code) {
  * argument (allocated by libcurl, meant to be freed with curl_free()
  * once the caller's own done with it) rather than returning it
  * directly -- collapsed to a plain return value here for the same
- * reason as idris2curl_getinfo_string above. This variant leaks: the
- * %foreign `String` return copies this pointer's own bytes into a
- * fresh Idris2-owned string right after this call returns, but
- * nothing downstream of that copy ever gets the chance to
- * curl_free() libcurl's own original allocation -- there's no hook
- * in a plain %foreign call for "do this after the copy, before
- * returning to Idris2 code". Kept only for real upstream RefC, whose
- * own createCFunctions has a packCFType-vs-argument-drop ordering bug
- * (see idris2-rc-cg's TODO.md, commit 2aa9b90, which fixed the same
- * bug on rc2) that makes reading a GCAnyPtr-wrapped pointer back
- * unsafe there -- Network.Curl.Raw's own curlUrlGet picks this path
- * on RefC specifically, `idris2curl_url_get_raw` below everywhere
- * else. One URL part's worth of leaked bytes (rarely more than a few
- * dozen) per call on RefC only, not unbounded, not accumulating per
- * network request. */
-static inline char *idris2curl_url_get(CURLU *u, int what, unsigned int flags) {
-    char *part = NULL;
-    CURLUcode rc = curl_url_get(u, (CURLUPart) what, &part, flags);
-    return (rc == CURLUE_OK && part != NULL) ? part : (char *) "";
-}
-
-/* Raw (no-copy) variant of idris2curl_url_get above: NULL on failure
- * instead of a static "" literal, so a non-NULL result is always a
- * genuine libcurl allocation safe to wrap in a GCAnyPtr keyed to
- * curl_free (Network.Curl.Raw's own curlReadAndFree) -- returning ""
- * here instead would mean attaching that finalizer to a string
- * literal, which crashes once curl_free() actually runs on it. Also
- * incidentally distinguishes "part is genuinely empty" (CURLUE_OK,
- * non-NULL, empty string) from "curl_url_get failed" (NULL) -- see
- * TODO.md's own "curlUrlGet can't distinguish..." entry -- though
- * Network.Curl.Raw's own curlUrlGet still collapses both to "" for
- * now, unchanged from idris2curl_url_get's own contract above. */
+ * reason as idris2curl_getinfo_string above. NULL on failure, so a
+ * non-NULL result is always a genuine libcurl allocation, distinct
+ * from "part is genuinely empty" (CURLUE_OK, non-NULL, empty string)
+ * -- Network.Curl.Raw's own curlUrlGet reads this back two different
+ * ways depending on backend (rc2: `curlReadAndFree`'s GCAnyPtr, leak-
+ * free; RefC: `Data.String.FFI.ptrToString`'s bare copy, since real
+ * upstream RefC's own createCFunctions has a packCFType-vs-argument-
+ * drop ordering bug -- see idris2-rc-cg's TODO.md, commit 2aa9b90,
+ * which fixed the same bug on rc2 -- that makes reading a GCAnyPtr-
+ * wrapped pointer back unsafe there), but both share this one shim:
+ * unlike idris2curl_getinfo_string above, there's no backend where a
+ * `char *`-returning %foreign target would even type-check here (the
+ * output-pointer collapse still needs a shim; a raw AnyPtr return
+ * doesn't need a *per-backend* one, so only one shim, not a Leaky/Raw
+ * pair, exists for this call). One URL part's worth of leaked bytes
+ * (rarely more than a few dozen) per call on RefC only, not
+ * unbounded, not accumulating per network request. */
 static inline void *idris2curl_url_get_raw(CURLU *u, int what, unsigned int flags) {
     char *part = NULL;
     CURLUcode rc = curl_url_get(u, (CURLUPart) what, &part, flags);
@@ -130,9 +171,15 @@ static inline int idris2curl_version_info_features(void) {
     return curl_version_info(CURLVERSION_NOW)->features;
 }
 
+/* Unlike version/host above, `ssl_version` genuinely can be NULL --
+ * per curl_version_info(3), it's set only when libcurl was built with
+ * SSL support, NULL otherwise -- so this one hands back the raw
+ * pointer (NULL passthrough, no "" substitution) for
+ * Network.Curl.Raw's own curlVersionInfoSslVersion to read via
+ * Data.String.FFI.ptrToString, distinguishing "no SSL backend" from a
+ * (never actually occurring) empty name. */
 static inline char *idris2curl_version_info_ssl_version(void) {
-    const char *v = curl_version_info(CURLVERSION_NOW)->ssl_version;
-    return (char *) (v == NULL ? "" : v);
+    return (char *) curl_version_info(CURLVERSION_NOW)->ssl_version;
 }
 
 static inline char *idris2curl_multi_strerror(int code) {

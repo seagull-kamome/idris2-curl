@@ -70,13 +70,12 @@ anything else, just not reached yet.
 `curlopt_*` constants each `examples/*.idr` actually exercises.
 libcurl has several hundred `CURLOPT_*` options and ~100 `CURLINFO_*`
 values; add more as a concrete need comes up rather than
-pre-emptively transcribing the whole enum. `CURLINFO_SLIST`/
-`CURLINFO_OFF_T`/`CURLINFO_SOCKET`-tagged infos also need
-`Network.Curl.Raw`'s own `curlEasyGetinfo*` extended with a matching
-`idris2curl_getinfo_*` shim and Idris-side type before any concrete
-`curlinfo_*` constant of that tag is worth adding --- `off_t` in
-particular needs a representation decision (`Int` truncates on a
-32-bit `long` platform; `Integer` is always safe but boxed).
+pre-emptively transcribing the whole enum. All six `CURLINFO_*` type
+tags (`STRING`/`LONG`/`DOUBLE`/`SLIST`/`OFF_T`/`SOCKET`) now have a
+matching `Network.Curl.Raw` `curlEasyGetinfo*` function and at least
+one bound constant each -- `off_t` is represented as `Int64`
+(`curl_off_t` is always a real 64-bit signed integer in libcurl
+itself, independent of the host platform's own `long` width).
 
 ## `curl_url_get`/`curl_easy_escape`/`curl_easy_unescape` still leak on RefC
 
@@ -95,16 +94,3 @@ idris-lang/Idris2, to drop the RefC branch entirely). One string's
 worth of leaked bytes per call on RefC only (rarely more than a few
 dozen), not unbounded, not accumulating per network request.
 
-## `curlUrlGet` can't distinguish "empty part" from "curl_url_get failed"
-
-`idris2curl_url_get`'s own collapsed return (`csrc/idris2curl_compat.h`)
-doesn't thread the underlying `CURLUcode` back to the Idris side --
-both a `curl_url_get` failure and a part that's genuinely empty come
-back as `""`. Not encountered in practice yet (every part
-`examples/UrlGet.idr` reads is always present for the URLs tested), but
-would need the shim reworked to return `(CURLUcode, String)` (e.g. via
-an output-argument pointer of its own, or two shims) to fix properly.
-`idris2curl_url_get_raw` (added alongside the leak fix above) already
-distinguishes the two cases at the C level (`NULL` vs. a real,
-possibly-empty allocation) -- `Network.Curl.Raw`'s own `curlUrlGet`
-just still collapses both back to `""` on top of it, unchanged.

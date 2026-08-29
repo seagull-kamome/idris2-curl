@@ -70,10 +70,34 @@ test" section.
 `curlinfo_RESPONSE_CODE`, `curlinfo_TOTAL_TIME`,
 `curlinfo_NAMELOOKUP_TIME`, `curlinfo_CONNECT_TIME`,
 `curlinfo_HEADER_SIZE`, `curlinfo_REQUEST_SIZE`,
-`curlinfo_CONTENT_TYPE`, `curlinfo_REDIRECT_COUNT` -- every one
-`CURLINFO_STRING`/`_LONG`/`_DOUBLE`-tagged. `CURLINFO_SLIST`/
-`_OFF_T`/`_SOCKET`-tagged infos (e.g. `CURLINFO_SIZE_DOWNLOAD_T`,
-`CURLINFO_COOKIELIST`) aren't bound yet -- would need their own
-`idris2curl_getinfo_*` shim and Idris-side type (`off_t` in particular
-needs a representation decision: `Int` truncates on a 32-bit `long`
-platform, `Integer` is always safe but boxed).
+`curlinfo_CONTENT_TYPE`, `curlinfo_REDIRECT_COUNT`
+(`CURLINFO_STRING`/`_LONG`/`_DOUBLE`-tagged), plus one representative
+each for the three remaining tags: `curlinfo_SIZE_DOWNLOAD_T`
+(`_OFF_T`), `curlinfo_COOKIELIST` (`_SLIST`), `curlinfo_ACTIVESOCKET`
+(`_SOCKET`). `off_t` is represented as `Int64` (`curl_off_t` is always
+a real 64-bit signed integer in libcurl itself, independent of the
+host platform's own `long` width) and `curl_socket_t` as plain `Int`
+(a real C `int` on every non-Windows platform, per curl/curl.h's own
+typedef) -- see `Network.Curl.Raw`'s own `curlEasyGetinfoOfft`/
+`curlEasyGetinfoSocket` doc comments.
+
+`CURLINFO_OFF_T`-tagged infos are rc2-only, unlike every other tag
+here: confirmed directly that real upstream RefC's own C backend
+crashes lowering any `Int64`-returning `%foreign` call ("INTERNAL
+ERROR: Unknown FFI type in C backend: Int_64") against the
+nixpkgs-packaged idris2 build used here, even though
+`Compiler.RefC.RefC`'s own `cTypeOfCFType`/`extractValue`/`packCFType`
+each do have a `CFInt64` case -- some other, unidentified stage still
+fails to route it there. `examples/GetInfoOfft.idr` is rc2-only by
+construction (not RefC/rc2 like every other example here) for this
+reason; `examples/GetInfo.idr` itself exercises the `_SLIST`/`_SOCKET`
+tags instead, both RefC-safe.
+
+`CURLINFO_SLIST`'s own value (a `struct curl_slist *`) is read via
+`Network.Curl.Raw`'s own `curlSlistToList`, one shim per field
+(`idris2curl_slist_data`/`_next`) the same way `curl_version_info`/
+`CURLMsg` are (see `version-info-struct.md`), with each node's own
+`data` copied through `Data.String.FFI.ptrToString`'s bare (non-owning)
+read -- ownership of every node's `data` belongs to the list as a
+whole, released in one `curl_slist_free_all()` call
+(`curlSlistFreeAll`), never per node.

@@ -18,8 +18,10 @@ For the common "capture the whole response body" case specifically,
 `CURLOPT_WRITEDATA` (an ordinary object-pointer option) pointed at an
 `open_memstream(3)` `FILE *` redirects libcurl's own *default* writer
 into memory with no callback at all. See `doc/memstream-capture.md` and
-`Network.Curl.Raw`'s own `curlMemstreamOpen`/`curlMemstreamToBuffer`/
-`curlMemstreamToString`/`curlMemstreamToTextBuffer`. Still open:
+`Network.Curl.Raw`'s own `curlEasyPerformToBuffer`/`ToString`/
+`ToTextBuffer` -- the capture stream itself is `rc2base`'s own
+`System.IO.MemStream` (nothing curl-specific about `open_memstream`),
+never exposed in this library's own public API. Still open:
 `CURLOPT_HEADERFUNCTION`/`CURLOPT_READFUNCTION` and genuinely streaming
 (rather than capture-then-read) body handling, which do need a real
 callback.

@@ -131,10 +131,12 @@ target at all (`doc/variadic-getinfo.md`) and fails to build here.
 
 Against plain upstream `idris2 --cg refc` (needs `IDRIS2_LDLIBS` set
 by hand -- rc2's own automatic `-l<lib>` derivation, see below, hasn't
-been upstreamed):
+been upstreamed -- for `rc2base` too, not just `libcurl`):
 ```sh
-export IDRIS2_CFLAGS="-Icsrc"
-export IDRIS2_LDLIBS="$(pkg-config --libs libcurl)"
+RC2BASE_LIB="../idris2-rc-cg/libs/rc2base/.local-install/idris2-0.8.0/rc2base-0.1.0/lib"
+export IDRIS2_CFLAGS="-Icsrc -I$RC2BASE_LIB"
+export IDRIS2_LDFLAGS="-L$RC2BASE_LIB"
+export IDRIS2_LDLIBS="$(pkg-config --libs libcurl) -lidris2rc2base"
 IDRIS2_PREFIX="$(pwd)/.local-install" idris2 --cg refc -p curl -p rc2base -o get_refc examples/Get.idr
 ```
 

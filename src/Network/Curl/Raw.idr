@@ -8,10 +8,10 @@ module Network.Curl.Raw
 -- exercise curl_easy's "init, setopt, perform, cleanup" lifecycle.
 
 import Data.Buffer
-import Data.So
 import Data.String.FFI
 import Data.TextBuffer
 import System.FFI
+import System.IO.MemStream as MemStream
 import System.Info
 
 import Network.Curl.Types
@@ -39,7 +39,7 @@ prim__curlEasySetoptLong : AnyPtr -> Int -> Int -> PrimIO Int
 -- not a `String`/`Int` -- a `curl_slist *` (CURLOPT_HTTPHEADER,
 -- CURLOPT_SHARE, ...), a `curl_mime *` (CURLOPT_MIMEPOST), or any
 -- other `void *`-valued option (e.g. CURLOPT_WRITEDATA, see
--- curlMemstreamFilep's own doc comment).
+-- curlEasyPerformToBuffer's own doc comment).
 %foreign "C:curl_easy_setopt,libcurl,curl/curl.h"
 prim__curlEasySetoptPointer : AnyPtr -> Int -> AnyPtr -> PrimIO Int
 
@@ -410,47 +410,6 @@ prim__curlHeaderName : AnyPtr -> PrimIO String
 %foreign "RefC:idris2curl_header_value,libcurl,idris2curl_compat.h"
          "RC2:idris2curl_header_value,libcurl,idris2curl_compat.h"
 prim__curlHeaderValue : AnyPtr -> PrimIO String
-
--- Response-body capture without CURLOPT_WRITEFUNCTION -- see
--- idris2curl_memstream_open's own doc comment (idris2curl_compat.h)
--- and doc/memstream-capture.md for the full design. RefC/rc2-only,
--- same "static inline bookkeeping shim, no real symbol Chez's dynamic
--- FFI can reach" reasoning as every other custom-struct shim in this
--- file -- not a fundamental limit of open_memstream(3) itself (a real,
--- Chez-reachable libc symbol), just of wrapping it in one here.
-%foreign "RefC:idris2curl_memstream_open,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_memstream_open,libcurl,idris2curl_compat.h"
-prim__curlMemstreamOpen : PrimIO AnyPtr
-
-%foreign "RefC:idris2curl_memstream_filep,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_memstream_filep,libcurl,idris2curl_compat.h"
-prim__curlMemstreamFilep : AnyPtr -> PrimIO AnyPtr
-
-%foreign "RefC:idris2curl_memstream_close,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_memstream_close,libcurl,idris2curl_compat.h"
-prim__curlMemstreamClose : AnyPtr -> PrimIO ()
-
-%foreign "RefC:idris2curl_memstream_data,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_memstream_data,libcurl,idris2curl_compat.h"
-prim__curlMemstreamData : AnyPtr -> PrimIO AnyPtr
-
-%foreign "RefC:idris2curl_memstream_size,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_memstream_size,libcurl,idris2curl_compat.h"
-prim__curlMemstreamSize : AnyPtr -> PrimIO Int
-
-%foreign "RefC:idris2curl_memstream_free,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_memstream_free,libcurl,idris2curl_compat.h"
-prim__curlMemstreamFree : AnyPtr -> PrimIO ()
-
--- Idris2's own `Buffer`-layout-dependent shim -- see
--- idris2curl_memstream_copy_into_buffer's own doc comment
--- (idris2curl_compat.h) for why this one, unlike every other function
--- in this section, is genuinely RefC/rc2-only for a structural reason
--- (Chez's own Buffer has no matching C layout at all), not just a
--- static-linking one.
-%foreign "RefC:idris2curl_memstream_copy_into_buffer,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_memstream_copy_into_buffer,libcurl,idris2curl_compat.h"
-prim__curlMemstreamCopyIntoBuffer : AnyPtr -> Buffer -> PrimIO ()
 
 ||| `CURL_GLOBAL_ALL`, per curl/curl.h.
 curlGlobalAll : Int
@@ -929,80 +888,67 @@ curlEasyNextheader h origin request prev = do
          v <- primIO (prim__curlHeaderValue hdr)
          pure $ Just (hdr, n, v)
 
-||| Opens an in-memory capture stream -- pass the result to
-||| `curlMemstreamFilep`, then `curlEasySetoptPointer h curlopt_WRITEDATA`
-||| that, *before* `curlEasyPerform`, to redirect libcurl's own default
-||| write callback into it instead of the process's real stdout. See
-||| `doc/memstream-capture.md`. `Nothing` on `open_memstream(3)`/
-||| allocation failure.
+||| Performs the transfer with `CURLOPT_WRITEDATA` pointed at an
+||| in-memory capture stream (`System.IO.MemStream`, `rc2base`), so the
+||| response body ends up here instead of the process's own stdout --
+||| `CURLOPT_WRITEFUNCTION` itself still isn't bound (see `TODO.md`).
+||| See `doc/memstream-capture.md` for the full design -- this
+||| function's own callers never see a `MemStream` at all. `Nothing` if
+||| the capture stream itself couldn't be set up (allocation/
+||| `open_memstream(3)`/setopt failure -- `curl_easy_perform` is never
+||| even attempted then) or the final `Buffer` read failed; otherwise
+||| always `Just`, even on a `curl_easy_perform` failure of its own --
+||| the captured body, whatever there is of it, alongside the
+||| `CURLcode`, a caller that only cares about success checks that code
+||| itself.
 export
-curlMemstreamOpen : HasIO io => io (Maybe AnyPtr)
-curlMemstreamOpen = do
-    m <- primIO prim__curlMemstreamOpen
-    pure $ if prim__nullAnyPtr m /= 0 then Nothing else Just m
-
-||| The `FILE *` to hand `curlEasySetoptPointer h curlopt_WRITEDATA`.
-export
-curlMemstreamFilep : HasIO io => AnyPtr -> io AnyPtr
-curlMemstreamFilep m = primIO (prim__curlMemstreamFilep m)
-
-||| Flushes and finalizes the captured bytes -- call once, after
-||| `curlEasyPerform` returns, before any `curlMemstreamTo*`/
-||| `curlMemstreamSize` call.
-export
-curlMemstreamClose : HasIO io => AnyPtr -> io ()
-curlMemstreamClose m = primIO (prim__curlMemstreamClose m)
-
-||| Releases the capture stream and the bytes it captured -- call once,
-||| after every `curlMemstreamTo*`/`curlMemstreamSize` read is done.
-export
-curlMemstreamFree : HasIO io => AnyPtr -> io ()
-curlMemstreamFree m = primIO (prim__curlMemstreamFree m)
-
-||| Exact captured byte count. Call `curlMemstreamClose` first.
-export
-curlMemstreamSize : HasIO io => AnyPtr -> io Int
-curlMemstreamSize m = primIO (prim__curlMemstreamSize m)
-
-||| One copy, straight into a freshly allocated Idris `Buffer` at its
-||| own native layout -- see `idris2curl_memstream_copy_into_buffer`'s
-||| own doc comment (`idris2curl_compat.h`). The only one of the three
-||| `curlMemstreamTo*` conversions that's exact-byte-count and
-||| embedded-NUL-safe (`Buffer`'s whole point). Call
-||| `curlMemstreamClose` first.
-export
-curlMemstreamToBuffer : HasIO io => AnyPtr -> io (Maybe Buffer)
-curlMemstreamToBuffer m = do
-    size <- primIO (prim__curlMemstreamSize m)
-    Just buf <- newBuffer size
+curlEasyPerformToBuffer : HasIO io => AnyPtr -> io (Maybe (CURLcode, Buffer))
+curlEasyPerformToBuffer h = do
+    Just ms <- liftIO MemStream.newMemStream
         | Nothing => pure Nothing
-    primIO (prim__curlMemstreamCopyIntoBuffer m buf)
-    pure (Just buf)
+    fp <- liftIO (MemStream.filePtr ms)
+    MkCURLcode 0 <- curlEasySetoptPointer h curlopt_WRITEDATA fp
+        | _ => do liftIO (MemStream.free ms)
+                  pure Nothing
+    result <- curlEasyPerform h
+    liftIO (MemStream.close ms)
+    mbuf <- liftIO (MemStream.toBuffer ms)
+    liftIO (MemStream.free ms)
+    pure (map (\b => (result, b)) mbuf)
 
-||| One copy, via `Data.String.FFI.ptrToString`'s NUL-terminated read --
-||| safe here since `open_memstream(3)` itself always NUL-terminates on
-||| close (`idris2curl_memstream_close`'s own doc comment,
-||| `idris2curl_compat.h`); truncates early only if the response body
-||| itself contains an embedded NUL byte, same caveat every other
-||| `String`-returning binding in this module already has. Call
-||| `curlMemstreamClose` first.
+||| Same as `curlEasyPerformToBuffer`, reading the captured body as a
+||| `String` instead (`MemStream.toString`, one copy, NUL-terminated --
+||| see that function's own doc comment for the embedded-NUL caveat).
 export
-curlMemstreamToString : HasIO io => AnyPtr -> io (Maybe String)
-curlMemstreamToString m = do
-    raw <- primIO (prim__curlMemstreamData m)
-    pure (ptrToString raw)
+curlEasyPerformToString : HasIO io => AnyPtr -> io (Maybe (CURLcode, String))
+curlEasyPerformToString h = do
+    Just ms <- liftIO MemStream.newMemStream
+        | Nothing => pure Nothing
+    fp <- liftIO (MemStream.filePtr ms)
+    MkCURLcode 0 <- curlEasySetoptPointer h curlopt_WRITEDATA fp
+        | _ => do liftIO (MemStream.free ms)
+                  pure Nothing
+    result <- curlEasyPerform h
+    liftIO (MemStream.close ms)
+    mstr <- liftIO (MemStream.toString ms)
+    liftIO (MemStream.free ms)
+    pure (map (\s => (result, s)) mstr)
 
-||| One copy, via `Data.TextBuffer.fromRawUtf8`'s direct raw-bytes
-||| decode -- no intermediate `String`. Same NUL-terminated-read caveat
-||| as `curlMemstreamToString` above. Call `curlMemstreamClose` first.
-||| The NULL check here isn't just defensive: it's also where
-||| `fromRawUtf8`'s own `NonNullPtr` proof obligation actually gets
-||| discharged, via `Data.So.choose` -- `fromRawUtf8` itself has no
-||| other way to be called.
+||| Same as `curlEasyPerformToBuffer`, reading the captured body as a
+||| `TextBuffer` instead (`MemStream.toTextBuffer`, one copy). rc2-only,
+||| unlike the other two -- `Data.TextBuffer`'s own implementation
+||| needs rc2's own runtime headers, see `doc/memstream-capture.md`.
 export
-curlMemstreamToTextBuffer : HasIO io => AnyPtr -> io (Maybe TextBuffer)
-curlMemstreamToTextBuffer m = do
-    raw <- primIO (prim__curlMemstreamData m)
-    case choose (prim__nullAnyPtr raw == 0) of
-         Right _  => pure Nothing
-         Left prf => Just <$> liftIO (fromRawUtf8 raw prf)
+curlEasyPerformToTextBuffer : HasIO io => AnyPtr -> io (Maybe (CURLcode, TextBuffer))
+curlEasyPerformToTextBuffer h = do
+    Just ms <- liftIO MemStream.newMemStream
+        | Nothing => pure Nothing
+    fp <- liftIO (MemStream.filePtr ms)
+    MkCURLcode 0 <- curlEasySetoptPointer h curlopt_WRITEDATA fp
+        | _ => do liftIO (MemStream.free ms)
+                  pure Nothing
+    result <- curlEasyPerform h
+    liftIO (MemStream.close ms)
+    mtxt <- liftIO (MemStream.toTextBuffer ms)
+    liftIO (MemStream.free ms)
+    pure (map (\t => (result, t)) mtxt)

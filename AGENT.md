@@ -60,11 +60,6 @@ C codegen backend, not just the default Chez backend.
 - `TODO.md` — open gaps and deferred design decisions (removed once
   implemented and documented elsewhere)
 
-## サブエージェント
-- ファイル調査、コードベース調査、定型実装はサブエージェントに移譲する。
-- メインセッションは判断、設計、統合のみを残す。
-- 調査結果はサマリーのみをメインセッションに返却させる。(全文蓄積は禁止)
-
 
 ## コーディング規約
 以下を金言とせよ。

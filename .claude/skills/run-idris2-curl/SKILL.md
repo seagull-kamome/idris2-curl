@@ -24,11 +24,14 @@ exercises `curl_version`/`curl_easy_escape`/`curl_easy_unescape`/
 
 ## Prerequisites
 
-Everything is pulled in per-command via `nix-shell -p ...` (idris2,
-gcc, gmp, pkg-config, curl) — nothing to install ahead of time beyond
-`nix` itself being on `PATH`. The `rc2` backend additionally needs
-`idris2-rc-cg` checked out and built as a sibling directory
-(`../idris2-rc-cg`) — see that repo's own `run-idris2-rc-cg` skill.
+`gcc`/`gmp`/`pkg-config`/`curl` are pulled in per-command via
+`nix-shell -p ...` — but `idris2` itself never is: every backend here
+(Chez, RefC, and rc2 alike) runs against `idris2-rc-cg`'s own
+self-built toolchain instead of nix's `idris2` package, matching that
+repo's own build/test policy. `../idris2-rc-cg` must be checked out as
+a sibling directory and already built (see that repo's own
+`run-idris2-rc-cg` skill) before running anything here, for every
+`--backend=`, not just `rc2`.
 
 ## Setup
 
@@ -38,20 +41,24 @@ library itself (`IDRIS2_PREFIX="$(pwd)/.local-install"`, gitignored).
 ## Build
 
 ```bash
-nix-shell -p idris2 gcc gmp pkg-config curl --run 'idris2 --build package.ipkg'
+source ../idris2-rc-cg/env.sh
+nix-shell -p gcc gmp pkg-config curl --run 'idris2 --build package.ipkg'
 ```
 
-Type-checks the library against the default Chez backend only. To
-actually compile an example against it, the library must also be
-installed to a local prefix first (the default install location is a
-read-only nix store path here):
+Type-checks the library against the default Chez backend only (using
+`idris2-rc-cg`'s own self-built `idris2`, put first on `PATH` by its
+`env.sh`, sourced above — not nix's `idris2` package). To actually
+compile an example against it, the library must also be installed to a
+local prefix first (the default install location is a read-only nix
+store path here):
 
 ```bash
-nix-shell -p idris2 gcc gmp pkg-config curl --run \
+nix-shell -p gcc gmp pkg-config curl --run \
   "IDRIS2_PREFIX='$(pwd)/.local-install' idris2 --install package.ipkg"
 ```
 
-`smoke.sh` does both of the above automatically.
+`smoke.sh` does both of the above automatically (sourcing
+`../idris2-rc-cg/env.sh` itself before each `idris2` invocation).
 
 ## Run (agent path)
 
@@ -76,6 +83,7 @@ To try one of the network-hitting examples by hand (needs real
 outbound HTTP, so only do this outside a sandboxed agent run):
 
 ```bash
+source ../idris2-rc-cg/env.sh
 export IDRIS2_CFLAGS="-Icsrc"
 IDRIS2_PREFIX="$(pwd)/.local-install" idris2 -p curl -o get examples/Get.idr
 nix-shell -p gcc gmp curl pkg-config --run \

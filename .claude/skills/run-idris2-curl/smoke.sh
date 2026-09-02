@@ -4,13 +4,19 @@
 # prefix, compiles the network-free UrlAndEscape.idr example against
 # one or more backends, runs each, and checks the output.
 #
+# Every `idris2` invocation below (any backend, not just rc2) runs
+# against ../idris2-rc-cg's own self-built toolchain (its own env.sh
+# sourced first, putting install/bin/idris2 ahead of anything else on
+# PATH) rather than nix's idris2 package -- idris2-rc-cg's own policy
+# of never relying on nix's idris2 for its own build/test work extends
+# here too, so this repo needs ../idris2-rc-cg checked out as a sibling
+# dir and already built (see that repo's own run-idris2-rc-cg skill)
+# for every backend, not just --backend=rc2.
+#
 # Usage: ./smoke.sh [--backend=chez|refc|rc2|all]
 #   --backend=chez   (default) default Idris2 Chez backend only
 #   --backend=refc   upstream idris2 --cg refc only
-#   --backend=rc2    idris2-rc-cg's rc2 backend only (needs
-#                    ../idris2-rc-cg checked out as a sibling dir,
-#                    already built -- see that repo's own
-#                    run-idris2-rc-cg skill)
+#   --backend=rc2    idris2-rc-cg's rc2 backend only
 #   --backend=all    all three, in order
 #
 # NOTE: this does NOT run examples/Get.idr or any other example that
@@ -32,12 +38,15 @@ done
 
 PREFIX="$UNIT_DIR/.local-install"
 
+RC2CG_ENV="$UNIT_DIR/../idris2-rc-cg/env.sh"
+
 echo "== type-checking package.ipkg (Chez) =="
-nix-shell -p idris2 gcc gmp pkg-config curl --run 'idris2 --build package.ipkg'
+nix-shell -p gcc gmp pkg-config curl --run \
+  "source '$RC2CG_ENV'; idris2 --build package.ipkg"
 
 echo "== installing library to local prefix =="
-nix-shell -p idris2 gcc gmp pkg-config curl --run \
-  "IDRIS2_PREFIX='$PREFIX' idris2 --install package.ipkg"
+nix-shell -p gcc gmp pkg-config curl --run \
+  "source '$RC2CG_ENV'; IDRIS2_PREFIX='$PREFIX' idris2 --install package.ipkg"
 
 EXPECTED_PREFIX='curl_version: libcurl/'
 LIBDIR_CMD='pkg-config --variable=libdir libcurl'
@@ -59,15 +68,15 @@ run_and_check() {
 
 build_chez() {
   echo "== compiling UrlAndEscape.idr (Chez) =="
-  nix-shell -p idris2 gcc gmp pkg-config curl --run \
-    "export IDRIS2_CFLAGS='-Icsrc'; IDRIS2_PREFIX='$PREFIX' idris2 -p curl -o smoke_urlget_chez examples/UrlAndEscape.idr"
+  nix-shell -p gcc gmp pkg-config curl --run \
+    "source '$RC2CG_ENV'; export IDRIS2_CFLAGS='-Icsrc'; IDRIS2_PREFIX='$PREFIX' idris2 -p curl -o smoke_urlget_chez examples/UrlAndEscape.idr"
   run_and_check chez "$UNIT_DIR/build/exec/smoke_urlget_chez"
 }
 
 build_refc() {
   echo "== compiling UrlAndEscape.idr (RefC) =="
-  nix-shell -p idris2 gcc gmp pkg-config curl --run \
-    "export IDRIS2_CFLAGS='-Icsrc'; export IDRIS2_LDLIBS=\"\$(pkg-config --libs libcurl)\"; IDRIS2_PREFIX='$PREFIX' idris2 --cg refc -p curl -o smoke_urlget_refc examples/UrlAndEscape.idr"
+  nix-shell -p gcc gmp pkg-config curl --run \
+    "source '$RC2CG_ENV'; export IDRIS2_CFLAGS='-Icsrc'; export IDRIS2_LDLIBS=\"\$(pkg-config --libs libcurl)\"; IDRIS2_PREFIX='$PREFIX' idris2 --cg refc -p curl -o smoke_urlget_refc examples/UrlAndEscape.idr"
   run_and_check refc "$UNIT_DIR/build/exec/smoke_urlget_refc"
 }
 
@@ -79,7 +88,7 @@ build_rc2() {
   fi
   echo "== compiling UrlAndEscape.idr (rc2) =="
   nix-shell -p gcc gmp pkg-config curl --run \
-    "source '$UNIT_DIR/../idris2-rc-cg/env.sh'; export IDRIS2_PACKAGE_PATH=\"\$IDRIS2_PACKAGE_PATH:$PREFIX/idris2-0.8.0\"; export IDRIS2_CFLAGS='-Icsrc'; export IDRIS2_LDFLAGS=\"\$(pkg-config --libs-only-L libcurl)\"; '$rc2_bin' --cg rc2 -p curl -o smoke_urlget_rc2 examples/UrlAndEscape.idr"
+    "source '$RC2CG_ENV'; export IDRIS2_PACKAGE_PATH=\"\$IDRIS2_PACKAGE_PATH:$PREFIX/idris2-0.8.0\"; export IDRIS2_CFLAGS='-Icsrc'; export IDRIS2_LDFLAGS=\"\$(pkg-config --libs-only-L libcurl)\"; '$rc2_bin' --cg rc2 -p curl -p rc2base -o smoke_urlget_rc2 examples/UrlAndEscape.idr"
   run_and_check rc2 "$UNIT_DIR/build/exec/smoke_urlget_rc2"
 }
 

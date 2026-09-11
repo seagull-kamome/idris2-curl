@@ -16,7 +16,7 @@ this repo).
 
 **Do not use `examples/Get.idr` or the other network-hitting examples**
 (`GetInfo.idr`, `GetWithHeaders.idr`, `Header.idr`, `Multi.idr`,
-`ShareAndMime.idr`, `UrlGet.idr`) for automated verification — they
+`ShareAndMime.idr`, `UrlGet.idr`, `Fetch.idr`) for automated verification — they
 make a real HTTP request to `example.com`, which an agent sandbox's
 network allowlist typically doesn't permit. `UrlAndEscape.idr` only
 exercises `curl_version`/`curl_easy_escape`/`curl_easy_unescape`/

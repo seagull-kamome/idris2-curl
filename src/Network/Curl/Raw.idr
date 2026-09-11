@@ -12,7 +12,6 @@ import Data.String.FFI
 import Data.TextBuffer
 import System.FFI
 import System.IO.MemStream as MemStream
-import System.Info
 
 import Network.Curl.Types
 
@@ -58,30 +57,22 @@ prim__curlSlistAppend : AnyPtr -> String -> PrimIO AnyPtr
 %foreign "C:curl_slist_free_all,libcurl,curl/curl.h"
 prim__curlSlistFreeAll : AnyPtr -> PrimIO ()
 
--- curl_easy_strerror returns `const char *`; rc2/RefC's own %foreign
+-- curl_easy_strerror returns `const char *`; rc2's own %foreign
 -- lowering hardcodes CFString as non-const `char *`, which collides
--- with both backends' own -Werror -Wdiscarded-qualifiers on a direct
--- binding (confirmed directly against upstream RefC too, not just
--- rc2 -- see idris2-rc-cg/TODO.md's "CFString's hardcoded char *
--- return type" entry). Chez has no such issue -- dynamically typed, no
--- C-level qualifier to discard -- so only the two static-linking
--- backends route through idris2curl_compat.h's `static inline` shim
--- (zero call overhead: the cast, not a real wrapper call, is the
+-- with -Werror -Wdiscarded-qualifiers on a direct binding. Chez has no
+-- such issue -- dynamically typed, no C-level qualifier to discard --
+-- so only rc2 routes through idris2curl_compat.h's `static inline`
+-- shim (zero call overhead: the cast, not a real wrapper call, is the
 -- point); Chez keeps calling curl_easy_strerror directly, since the
 -- shim only exists as a real symbol under static linking, never in
--- libcurl.so's own dynamic-load table. Both static backends need
--- IDRIS2_LDLIBS="-lcurl" set by hand under plain upstream RefC (only
--- rc2 derives -l<lib> automatically from the lib field, see
--- Compiler.RC2.CC's own compileCFile).
+-- libcurl.so's own dynamic-load table.
 --
--- Three %foreign targets pick the right one per backend: rc2's own FFI
+-- Two %foreign targets pick the right one per backend: rc2's own FFI
 -- target tags are `["RC2", "RefC", "C"]` (`Compiler.RC2.Emit`'s own
--- `ffiTags`, checked in that order) so `"RC2:..."` wins there;
--- upstream RefC's own tags are `["RefC", "C"]` so `"RefC:..."` wins
--- there; Chez's own target list (`["scheme,chez", "scheme", ..., "C"]`)
--- matches neither and falls through to the plain `"C:..."` entry.
+-- `ffiTags`, checked in that order) so `"RC2:..."` wins there; Chez's
+-- own target list (`["scheme,chez", "scheme", ..., "C"]`) matches
+-- neither and falls through to the plain `"C:..."` entry.
 %foreign "C:curl_easy_strerror,libcurl,curl/curl.h"
-         "RefC:idris2curl_easy_strerror,libcurl,idris2curl_compat.h"
          "RC2:idris2curl_easy_strerror,libcurl,idris2curl_compat.h"
 prim__curlEasyStrerror : Int -> PrimIO String
 
@@ -89,35 +80,25 @@ prim__curlEasyStrerror : Int -> PrimIO String
 -- write-through output pointer whose type depends on the CURLINFO);
 -- %foreign can't express that at all, so there's no plain "C:..."
 -- target here -- Chez has no shim to fall back to (see
--- idris2curl_compat.h's own doc comment on why these three shims can
--- only exist under static linking), and fails cleanly with "was not
+-- idris2curl_compat.h's own doc comment on why this shim can only
+-- exist under static linking), and fails cleanly with "was not
 -- accepted by any backend" at the one call site that actually needs
 -- one, rather than breaking every Chez build of this library.
-%foreign "RefC:idris2curl_getinfo_long,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_getinfo_long,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_getinfo_long,libcurl,idris2curl_compat.h"
 prim__curlEasyGetinfoLong : AnyPtr -> Int -> PrimIO Int
 
-%foreign "RefC:idris2curl_getinfo_string,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_getinfo_string,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_getinfo_string,libcurl,idris2curl_compat.h"
 prim__curlEasyGetinfoString : AnyPtr -> Int -> PrimIO String
 
-%foreign "RefC:idris2curl_getinfo_double,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_getinfo_double,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_getinfo_double,libcurl,idris2curl_compat.h"
 prim__curlEasyGetinfoDouble : AnyPtr -> Int -> PrimIO Double
 
 -- `Int64`, not `Int` -- `curl_off_t` is always a real 64-bit signed
 -- integer in libcurl, regardless of the host platform's own `long`
 -- width; see idris2curl_getinfo_offt's own doc comment
 -- (idris2curl_compat.h) for the matching `int64_t` C-side return type.
--- rc2-only, no `"RefC:..."` target -- confirmed directly that real
--- upstream RefC's own C backend crashes lowering any `Int64`-returning
--- %foreign call ("INTERNAL ERROR: Unknown FFI type in C backend:
--- Int_64", Core.CompileExpr's own `show CFInt64 = "Int_64"`), even
--- though `Compiler.RefC.RefC.cTypeOfCFType`/`extractValue`/
--- `packCFType` do each have their own `CFInt64` case -- some other,
--- unidentified stage still fails to route it there against the
--- nixpkgs-packaged idris2 build used here. idris2-rc-cg's own rc2
--- backend has no such gap.
+-- rc2-only, same "static inline, static linking only" reasoning as
+-- every other getinfo tag here -- no Chez binding.
 %foreign "RC2:idris2curl_getinfo_offt,libcurl,idris2curl_compat.h"
 prim__curlEasyGetinfoOfft : AnyPtr -> Int -> PrimIO Int64
 
@@ -126,57 +107,35 @@ prim__curlEasyGetinfoOfft : AnyPtr -> Int -> PrimIO Int64
 -- idris2curl_getinfo_slist's own doc comment, idris2curl_compat.h, for
 -- why this tag's value is caller-owned unlike every other getinfo tag
 -- here).
-%foreign "RefC:idris2curl_getinfo_slist,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_getinfo_slist,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_getinfo_slist,libcurl,idris2curl_compat.h"
 prim__curlEasyGetinfoSlist : AnyPtr -> Int -> PrimIO AnyPtr
 
 -- `struct curl_slist`'s own two fields, one shim each, same "one shim
 -- per field" idea as prim__curlVersionInfo*/prim__curlMultimsg* below.
-%foreign "RefC:idris2curl_slist_data,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_slist_data,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_slist_data,libcurl,idris2curl_compat.h"
 prim__curlSlistData : AnyPtr -> PrimIO AnyPtr
 
-%foreign "RefC:idris2curl_slist_next,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_slist_next,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_slist_next,libcurl,idris2curl_compat.h"
 prim__curlSlistNext : AnyPtr -> PrimIO AnyPtr
 
 -- `curl_socket_t` is a plain C `int` on every non-Windows platform
 -- (curl/curl.h's own typedef), an exact fit for Idris2's `Int`.
-%foreign "RefC:idris2curl_getinfo_socket,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_getinfo_socket,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_getinfo_socket,libcurl,idris2curl_compat.h"
 prim__curlEasyGetinfoSocket : AnyPtr -> Int -> PrimIO Int
 
 -- curl_easy_escape/curl_easy_unescape/curl_free: all return/take a
 -- plain (non-const) `char *`/`void *`, so no const-cast shim is
 -- needed here unlike curl_easy_strerror above. The escaped/unescaped
 -- result is libcurl's own fresh allocation, meant to be released with
--- curl_free() once read.
---
--- Two bindings per function: the `Leaky` one lets %foreign's own
--- String-return marshalling copy the bytes out immediately and never
--- frees the original (a small, bounded, per-call leak -- see
--- idris2curl_url_get's own doc comment, idris2curl_compat.h, for the
--- same reasoning); the `Raw` one hands back the untouched AnyPtr so
--- curlReadAndFree below can wrap it in a GCAnyPtr keyed to curl_free
--- and read it back leak-free. `curlEasyEscape`/`curlEasyUnescape`
--- pick between them based on `codegen`: real upstream RefC's own
--- createCFunctions still has the packCFType-vs-argument-drop ordering
--- bug that makes reading a GCAnyPtr back unsafe there (see
--- idris2-rc-cg's TODO.md, commit 2aa9b90, which fixed the identical
--- bug on rc2) -- RefC keeps the leaky path, Chez and rc2 both use the
--- leak-free one.
+-- curl_free() once read -- the raw `AnyPtr` is handed back untouched
+-- so curlReadAndFree below can wrap it in a GCAnyPtr keyed to
+-- curl_free and read it back leak-free, on both remaining backends.
 -- curl_easy_unescape's own fourth argument (`int *outlength`) is
 -- passed NULL -- always safe per curl_easy_unescape(3) when the
 -- caller only needs the NUL-terminated string result, not a decoded
 -- length that could itself embed a NUL byte.
 %foreign "C:curl_easy_escape,libcurl,curl/curl.h"
-prim__curlEasyEscapeLeaky : AnyPtr -> String -> Int -> PrimIO String
-
-%foreign "C:curl_easy_escape,libcurl,curl/curl.h"
 prim__curlEasyEscapeRaw : AnyPtr -> String -> Int -> PrimIO AnyPtr
-
-%foreign "C:curl_easy_unescape,libcurl,curl/curl.h"
-prim__curlEasyUnescapeLeaky : AnyPtr -> String -> Int -> AnyPtr -> PrimIO String
 
 %foreign "C:curl_easy_unescape,libcurl,curl/curl.h"
 prim__curlEasyUnescapeRaw : AnyPtr -> String -> Int -> AnyPtr -> PrimIO AnyPtr
@@ -198,23 +157,19 @@ prim__curlVersion : PrimIO String
 -- curl_version_info() returns a real C struct, not a scalar -- see
 -- idris2curl_version_info_version's own doc comment
 -- (idris2curl_compat.h) for why these route through per-field shims
--- (RefC/rc2-only, no Chez binding, same "static inline, static
--- linking only" reasoning as curl_easy_getinfo) rather than
--- System.FFI's own Struct/getField.
-%foreign "RefC:idris2curl_version_info_version,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_version_info_version,libcurl,idris2curl_compat.h"
+-- (rc2-only, no Chez binding, same "static inline, static linking
+-- only" reasoning as curl_easy_getinfo) rather than System.FFI's own
+-- Struct/getField.
+%foreign "RC2:idris2curl_version_info_version,libcurl,idris2curl_compat.h"
 prim__curlVersionInfoVersion : PrimIO String
 
-%foreign "RefC:idris2curl_version_info_version_num,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_version_info_version_num,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_version_info_version_num,libcurl,idris2curl_compat.h"
 prim__curlVersionInfoVersionNum : PrimIO Int
 
-%foreign "RefC:idris2curl_version_info_host,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_version_info_host,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_version_info_host,libcurl,idris2curl_compat.h"
 prim__curlVersionInfoHost : PrimIO String
 
-%foreign "RefC:idris2curl_version_info_features,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_version_info_features,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_version_info_features,libcurl,idris2curl_compat.h"
 prim__curlVersionInfoFeatures : PrimIO Int
 
 -- Unlike prim__curlVersionInfoVersion/Host above, this returns a raw
@@ -222,8 +177,7 @@ prim__curlVersionInfoFeatures : PrimIO Int
 -- NULL (see idris2curl_version_info_ssl_version's own doc comment,
 -- idris2curl_compat.h), so curlVersionInfoSslVersion below reads it
 -- through Data.String.FFI.ptrToString to preserve that distinction.
-%foreign "RefC:idris2curl_version_info_ssl_version,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_version_info_ssl_version,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_version_info_ssl_version,libcurl,idris2curl_compat.h"
 prim__curlVersionInfoSslVersion : PrimIO AnyPtr
 
 %foreign "C:curl_url,libcurl,curl/curl.h"
@@ -241,19 +195,14 @@ prim__curlUrlSet : AnyPtr -> Int -> String -> Int -> PrimIO Int
 -- curl_url_get() writes its own result through a `char **` output
 -- argument rather than returning it -- see idris2curl_url_get_raw's
 -- own doc comment (idris2curl_compat.h) for why it needs a shim at
--- all. Unlike curl_easy_escape/unescape above, only one shim/binding
--- here (not a per-backend Leaky/Raw pair): curlUrlGet reads the same
--- raw AnyPtr back two different ways depending on `codegen` instead.
--- RefC/rc2-only, no Chez binding -- see doc/variadic-getinfo.md-style
+-- all. rc2-only, no Chez binding -- see doc/variadic-getinfo.md-style
 -- reasoning, `prim__curlEasyGetinfoString`'s own doc comment above.
-%foreign "RefC:idris2curl_url_get_raw,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_url_get_raw,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_url_get_raw,libcurl,idris2curl_compat.h"
 prim__curlUrlGetRaw : AnyPtr -> Int -> Int -> PrimIO AnyPtr
 
 -- curl_url_strerror() returns `const char *`, same const-cast
 -- reasoning as curl_easy_strerror above.
 %foreign "C:curl_url_strerror,libcurl,curl/curl.h"
-         "RefC:idris2curl_url_strerror,libcurl,idris2curl_compat.h"
          "RC2:idris2curl_url_strerror,libcurl,idris2curl_compat.h"
 prim__curlUrlStrerror : Int -> PrimIO String
 
@@ -272,7 +221,6 @@ prim__curlMultiRemoveHandle : AnyPtr -> AnyPtr -> PrimIO Int
 -- curl_multi_strerror() returns `const char *`, same const-cast
 -- reasoning as curl_easy_strerror above.
 %foreign "C:curl_multi_strerror,libcurl,curl/multi.h"
-         "RefC:idris2curl_multi_strerror,libcurl,idris2curl_compat.h"
          "RC2:idris2curl_multi_strerror,libcurl,idris2curl_compat.h"
 prim__curlMultiStrerror : Int -> PrimIO String
 
@@ -281,30 +229,24 @@ prim__curlMultiStrerror : Int -> PrimIO String
 -- cleanly (an int count, or -- for info_read -- a CURLMsg* result
 -- alongside a count) -- see idris2curl_multi_perform/multi_wait/
 -- multi_info_read's own doc comments (idris2curl_compat.h) for how
--- each is collapsed to a plain return. RefC/rc2-only, no Chez binding,
+-- each is collapsed to a plain return. rc2-only, no Chez binding,
 -- same reasoning as curl_easy_getinfo (doc/variadic-getinfo.md).
-%foreign "RefC:idris2curl_multi_perform,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_multi_perform,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_multi_perform,libcurl,idris2curl_compat.h"
 prim__curlMultiPerform : AnyPtr -> PrimIO Int
 
-%foreign "RefC:idris2curl_multi_wait,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_multi_wait,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_multi_wait,libcurl,idris2curl_compat.h"
 prim__curlMultiWait : AnyPtr -> Int -> PrimIO Int
 
-%foreign "RefC:idris2curl_multi_info_read,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_multi_info_read,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_multi_info_read,libcurl,idris2curl_compat.h"
 prim__curlMultiInfoRead : AnyPtr -> PrimIO AnyPtr
 
-%foreign "RefC:idris2curl_multimsg_msg,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_multimsg_msg,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_multimsg_msg,libcurl,idris2curl_compat.h"
 prim__curlMultimsgMsg : AnyPtr -> PrimIO Int
 
-%foreign "RefC:idris2curl_multimsg_easy_handle,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_multimsg_easy_handle,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_multimsg_easy_handle,libcurl,idris2curl_compat.h"
 prim__curlMultimsgEasyHandle : AnyPtr -> PrimIO AnyPtr
 
-%foreign "RefC:idris2curl_multimsg_result,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_multimsg_result,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_multimsg_result,libcurl,idris2curl_compat.h"
 prim__curlMultimsgResult : AnyPtr -> PrimIO Int
 
 %foreign "C:curl_share_init,libcurl,curl/curl.h"
@@ -328,7 +270,6 @@ prim__curlShareSetoptInt : AnyPtr -> Int -> Int -> PrimIO Int
 -- curl_share_strerror() returns `const char *`, same const-cast
 -- reasoning as curl_easy_strerror above.
 %foreign "C:curl_share_strerror,libcurl,curl/curl.h"
-         "RefC:idris2curl_share_strerror,libcurl,idris2curl_compat.h"
          "RC2:idris2curl_share_strerror,libcurl,idris2curl_compat.h"
 prim__curlShareStrerror : Int -> PrimIO String
 
@@ -354,17 +295,13 @@ prim__curlMimeType : AnyPtr -> String -> PrimIO Int
 -- curl/curl.h's own CURL_ZERO_TERMINATED sentinel (`(size_t)-1`) --
 -- deliberately: `-1 : Int` maps to a 32-bit C `int` under the Chez
 -- backend specifically (`Compiler.Scheme.Chez`'s own `cftySpec CFInt
--- = "int"`; RefC/rc2 both treat `Int` as 64-bit, so this only bites
--- Chez), and a 32-bit `-1` doesn't sign-extend into a 64-bit
--- `(size_t)-1` consistently across calling conventions, landing on
--- some huge-but-wrong value instead -- confirmed directly: this
--- crashed with "invalid memory reference" under Chez specifically
--- (libcurl reading `datasize` bytes past a 5-byte string). Switching
--- the type to `Int64` "fixes" Chez (its own 64-bit two's-complement
--- bit pattern for -1 is genuinely all-ones everywhere) but isn't
--- viable either: RefC's own FFI type table has no `Int64` case at
--- all, crashing with "Unknown FFI type in C backend" at compile time.
--- `curlMimeData` (Network.Curl.Raw below) sidesteps both problems by
+-- = "int"`; rc2 treats `Int` as 64-bit, so this only bites Chez), and
+-- a 32-bit `-1` doesn't sign-extend into a 64-bit `(size_t)-1`
+-- consistently across calling conventions, landing on some huge-but-
+-- wrong value instead -- confirmed directly: this crashed with
+-- "invalid memory reference" under Chez specifically (libcurl reading
+-- `datasize` bytes past a 5-byte string). `curlMimeData`
+-- (Network.Curl.Raw below) sidesteps the problem by
 -- always passing the string's own real byte length
 -- (`Data.Buffer.stringByteLength`) instead of the sentinel -- a small
 -- positive value reads identically whether the backend treats it as
@@ -388,27 +325,24 @@ prim__curlEasyUpkeep : AnyPtr -> PrimIO Int
 -- curl_easy_header()'s own last argument is a write-through output
 -- pointer -- see idris2curl_easy_header's own doc comment
 -- (idris2curl_compat.h) for why it's collapsed via a csrc/ shim,
--- RefC/rc2-only, same reasoning as curl_easy_getinfo
+-- rc2-only, same reasoning as curl_easy_getinfo
 -- (doc/variadic-getinfo.md).
-%foreign "RefC:idris2curl_easy_header,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_easy_header,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_easy_header,libcurl,idris2curl_compat.h"
 prim__curlEasyHeader : AnyPtr -> String -> Int -> Int -> PrimIO AnyPtr
 
 -- curl_easy_nextheader() itself takes only plain input
 -- arguments/returns a pointer directly (no output-pointer trouble),
 -- so -- unlike curl_easy_header just above -- this binds directly on
 -- all three backends. Reading the curl_header* it returns still needs
--- idris2curl_header_name/value below (RefC/rc2-only, same struct-field
+-- idris2curl_header_name/value below (rc2-only, same struct-field
 -- reasoning as curl_version_info/CURLMsg).
 %foreign "C:curl_easy_nextheader,libcurl,curl/curl.h"
 prim__curlEasyNextheader : AnyPtr -> Int -> Int -> AnyPtr -> PrimIO AnyPtr
 
-%foreign "RefC:idris2curl_header_name,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_header_name,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_header_name,libcurl,idris2curl_compat.h"
 prim__curlHeaderName : AnyPtr -> PrimIO String
 
-%foreign "RefC:idris2curl_header_value,libcurl,idris2curl_compat.h"
-         "RC2:idris2curl_header_value,libcurl,idris2curl_compat.h"
+%foreign "RC2:idris2curl_header_value,libcurl,idris2curl_compat.h"
 prim__curlHeaderValue : AnyPtr -> PrimIO String
 
 ||| `CURL_GLOBAL_ALL`, per curl/curl.h.
@@ -542,15 +476,11 @@ curlSlistToList list =
 
 ||| Wraps a non-NULL libcurl-allocated `char *` in a `GCAnyPtr` keyed
 ||| to `curl_free`, then reads it back leak-free through
-||| `prim__curlGetStringGC`. Only safe on backends where a %foreign
-||| call's own return value is packed into a boxed Idris value
-||| *before* that same call's GCPtr-typed arguments are dropped --
+||| `prim__curlGetStringGC`. Safe on both remaining backends: a
+||| %foreign call's own return value is packed into a boxed Idris
+||| value *before* that same call's GCPtr-typed arguments are dropped,
 ||| true for Chez (tracing GC, no synchronous mid-call finalizer to
-||| begin with) and rc2 (idris2-rc-cg commit 2aa9b90), not yet for
-||| real upstream RefC. Callers branch on `codegen` themselves rather
-||| than this function doing it, since the *whole* alternative call
-||| (a differently-typed %foreign binding, not just this read step)
-||| differs per backend -- see `curlEasyEscape`.
+||| begin with) and rc2 (idris2-rc-cg commit 2aa9b90).
 export
 curlReadAndFree : HasIO io => AnyPtr -> io String
 curlReadAndFree raw = do
@@ -559,64 +489,53 @@ curlReadAndFree raw = do
 
 ||| `Nothing` on the same "libcurl itself reports an error" contract as
 ||| `curl_easy_escape(3)` (`Nothing` for both allocation failure and a
-||| `length` too large to represent as the underlying `int`). Leak-free
-||| on Chez/rc2, small bounded leak on RefC -- see
-||| `prim__curlEasyEscapeLeaky`'s own doc comment.
+||| `length` too large to represent as the underlying `int`).
+||| Leak-free via `curlReadAndFree` on both backends.
 export
 curlEasyEscape : HasIO io => AnyPtr -> String -> io (Maybe String)
-curlEasyEscape h s =
-    if codegen == "refc"
-       then do
-           r <- primIO (prim__curlEasyEscapeLeaky h s 0)
-           pure $ if r == "" then Nothing else Just r
-       else do
-           raw <- primIO (prim__curlEasyEscapeRaw h s 0)
-           if prim__nullAnyPtr raw /= 0
-              then pure Nothing
-              else Just <$> curlReadAndFree raw
+curlEasyEscape h s = do
+    raw <- primIO (prim__curlEasyEscapeRaw h s 0)
+    if prim__nullAnyPtr raw /= 0
+       then pure Nothing
+       else Just <$> curlReadAndFree raw
 
-||| Same leak-free-on-Chez/rc2, leaky-on-RefC split as `curlEasyEscape`.
+||| Same leak-free-via-`curlReadAndFree` shape as `curlEasyEscape`.
 export
 curlEasyUnescape : HasIO io => AnyPtr -> String -> io (Maybe String)
-curlEasyUnescape h s =
-    if codegen == "refc"
-       then do
-           r <- primIO (prim__curlEasyUnescapeLeaky h s 0 prim__getNullAnyPtr)
-           pure $ if r == "" then Nothing else Just r
-       else do
-           raw <- primIO (prim__curlEasyUnescapeRaw h s 0 prim__getNullAnyPtr)
-           if prim__nullAnyPtr raw /= 0
-              then pure Nothing
-              else Just <$> curlReadAndFree raw
+curlEasyUnescape h s = do
+    raw <- primIO (prim__curlEasyUnescapeRaw h s 0 prim__getNullAnyPtr)
+    if prim__nullAnyPtr raw /= 0
+       then pure Nothing
+       else Just <$> curlReadAndFree raw
 
 export
 curlVersion : HasIO io => io String
 curlVersion = primIO prim__curlVersion
 
-||| RefC/rc2-only, no Chez binding -- see `prim__curlVersionInfoVersion`'s
+||| rc2-only, no Chez binding -- see `prim__curlVersionInfoVersion`'s
 ||| own doc comment.
 export
 curlVersionInfoVersion : HasIO io => io String
 curlVersionInfoVersion = primIO prim__curlVersionInfoVersion
 
-||| RefC/rc2-only, same as `curlVersionInfoVersion`.
+||| rc2-only, same as `curlVersionInfoVersion`.
 export
 curlVersionInfoVersionNum : HasIO io => io Int
 curlVersionInfoVersionNum = primIO prim__curlVersionInfoVersionNum
 
-||| RefC/rc2-only, same as `curlVersionInfoVersion`.
+||| rc2-only, same as `curlVersionInfoVersion`.
 export
 curlVersionInfoHost : HasIO io => io String
 curlVersionInfoHost = primIO prim__curlVersionInfoHost
 
-||| RefC/rc2-only, same as `curlVersionInfoVersion`. See
+||| rc2-only, same as `curlVersionInfoVersion`. See
 ||| curl/curl.h's own `CURL_VERSION_*` bit flags (`CURL_VERSION_SSL`,
 ||| `CURL_VERSION_HTTP2`, ...) to test against the result.
 export
 curlVersionInfoFeatures : HasIO io => io Int
 curlVersionInfoFeatures = primIO prim__curlVersionInfoFeatures
 
-||| RefC/rc2-only, same as `curlVersionInfoVersion`. `Nothing` when
+||| rc2-only, same as `curlVersionInfoVersion`. `Nothing` when
 ||| libcurl was built without SSL support -- a genuine, documented
 ||| `NULL` (`curl_version_info(3)`), not collapsed away like
 ||| `curlVersionInfoVersion`/`Host` above.
@@ -652,30 +571,21 @@ export
 curlUrlSet : HasIO io => AnyPtr -> CURLUPart -> String -> Int -> io CURLUcode
 curlUrlSet u (MkCURLUPart p) s flags = MkCURLUcode <$> primIO (prim__curlUrlSet u p s flags)
 
-||| RefC/rc2-only, no Chez binding -- see `Network.Curl.Raw`'s own doc
+||| rc2-only, no Chez binding -- see `Network.Curl.Raw`'s own doc
 ||| comment on `prim__curlUrlGetRaw` and `doc/variadic-getinfo.md`-style
 ||| reasoning (the underlying shim is `static inline`, unreachable
 ||| under Chez's own dynamic FFI). `flags` -- see `curlUrlSet`'s own
 ||| doc comment. `Nothing` on a `curl_url_get` failure, `Just` (with a
 ||| possibly-empty `String`) otherwise -- distinguishable because
 ||| `idris2curl_url_get_raw` hands back NULL only on failure. Read back
-||| leak-free via `curlReadAndFree`'s GCAnyPtr on rc2; on RefC, via
-||| `Data.String.FFI.ptrToString`'s bare (non-GC, non-freeing) copy
-||| instead, since real upstream RefC's own createCFunctions has a
-||| packCFType-vs-argument-drop ordering bug that makes reading a
-||| GCAnyPtr back unsafe there (see idris2-rc-cg's TODO.md, commit
-||| 2aa9b90, which fixed the identical bug on rc2) -- one URL part's
-||| worth of leaked bytes per call on RefC only, same accepted leak as
-||| before this function distinguished empty from failure.
+||| leak-free via `curlReadAndFree`'s GCAnyPtr.
 export
 curlUrlGet : HasIO io => AnyPtr -> CURLUPart -> Int -> io (Maybe String)
 curlUrlGet u (MkCURLUPart p) flags = do
     raw <- primIO (prim__curlUrlGetRaw u p flags)
-    if codegen == "refc"
-       then pure (ptrToString raw)
-       else if prim__nullAnyPtr raw /= 0
-               then pure Nothing
-               else Just <$> curlReadAndFree raw
+    if prim__nullAnyPtr raw /= 0
+       then pure Nothing
+       else Just <$> curlReadAndFree raw
 
 export
 curlUrlStrerror : HasIO io => CURLUcode -> io String
@@ -705,7 +615,7 @@ export
 curlMultiStrerror : HasIO io => CURLMcode -> io String
 curlMultiStrerror (MkCURLMcode c) = primIO (prim__curlMultiStrerror c)
 
-||| RefC/rc2-only, no Chez binding -- see `prim__curlMultiPerform`'s own
+||| rc2-only, no Chez binding -- see `prim__curlMultiPerform`'s own
 ||| doc comment. Number of easy handles still transferring data, or
 ||| `Nothing` if `curl_multi_perform` itself reported an error
 ||| (`idris2curl_multi_perform`'s own collapsed `-1`, indistinguishable
@@ -717,7 +627,7 @@ curlMultiPerform m = do
     n <- primIO (prim__curlMultiPerform m)
     pure $ if n < 0 then Nothing else Just n
 
-||| RefC/rc2-only, same as `curlMultiPerform`. `timeoutMs` -- how long
+||| rc2-only, same as `curlMultiPerform`. `timeoutMs` -- how long
 ||| to block waiting for activity on any handle in `m`'s own stack
 ||| before returning regardless (`curl_multi_wait(3)`); the number of
 ||| fds that were actually signalled, or `Nothing` on the same
@@ -728,7 +638,7 @@ curlMultiWait m timeoutMs = do
     n <- primIO (prim__curlMultiWait m timeoutMs)
     pure $ if n < 0 then Nothing else Just n
 
-||| RefC/rc2-only, no Chez binding -- see `prim__curlMultiInfoRead`'s
+||| rc2-only, no Chez binding -- see `prim__curlMultiInfoRead`'s
 ||| own doc comment. `Nothing` once the message queue is empty (the
 ||| ordinary, expected way this loop ends -- not an error).
 ||| `(CURLMSG, AnyPtr, CURLcode)` is `(what kind of message, which easy
@@ -852,7 +762,7 @@ export
 curlEasyUpkeep : HasIO io => AnyPtr -> io CURLcode
 curlEasyUpkeep h = MkCURLcode <$> primIO (prim__curlEasyUpkeep h)
 
-||| RefC/rc2-only, no Chez binding -- see `prim__curlEasyHeader`'s own
+||| rc2-only, no Chez binding -- see `prim__curlEasyHeader`'s own
 ||| doc comment. `Nothing` on `CURLHE_MISSING`/any other non-OK
 ||| `CURLHcode` (`idris2curl_easy_header`'s own collapsed `NULL`,
 ||| indistinguishable from a genuine "no such header" here -- the
@@ -870,7 +780,7 @@ curlEasyHeader h name origin request = do
          v <- primIO (prim__curlHeaderValue hdr)
          pure $ Just (n, v)
 
-||| RefC/rc2-only, same as `curlEasyHeader`. `prev` -- `curlSlistEmpty`
+||| rc2-only, same as `curlEasyHeader`. `prev` -- `curlSlistEmpty`
 ||| to start iterating from the first header, or a previous call's own
 ||| result (the raw pointer, not the `(String, String)` pair
 ||| `curlEasyHeader`/this function's own wrapper hands back -- see

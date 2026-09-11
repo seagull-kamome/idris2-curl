@@ -1,4 +1,4 @@
-# Binding `curl_easy_getinfo`/`curl_url_get`: variadic or output-pointer, RefC/rc2-only
+# Binding `curl_easy_getinfo`/`curl_url_get`: variadic or output-pointer, rc2-only
 
 `curl_url_get` (`curl/urlapi.h`) shares this same "no Chez binding at
 all" conclusion for a related but distinct reason: it isn't variadic,
@@ -53,14 +53,14 @@ reasoning -- same argument applies here).
 
 Confirmed directly (not just inferred) that this fails cleanly rather
 than breaking every Chez build of the library: a `%foreign` with only
-`"RefC:..."`/`"RC2:..."` targets still *type-checks* fine under Chez
+an `"RC2:..."` target still *type-checks* fine under Chez
 (`idris2 --build package.ipkg` never needs to pick a target for a
 declaration that's never actually called), and only errors -- with a
 clear "was not accepted by any backend" message -- at the specific
 call site of a program that's actually compiled against Chez. So
 `Network.Curl.Raw`'s own `prim__curlEasyGetinfoLong`/`*String`/
 `*Double` simply have no `"C:..."` entry; `examples/GetInfo.idr`
-(the one place that calls them) is RefC/rc2-only by construction, not
+(the one place that calls them) is rc2-only by construction, not
 included in Chez's own examples build. See `AGENT.md`'s own "Build &
 test" section.
 
@@ -81,17 +81,9 @@ host platform's own `long` width) and `curl_socket_t` as plain `Int`
 typedef) -- see `Network.Curl.Raw`'s own `curlEasyGetinfoOfft`/
 `curlEasyGetinfoSocket` doc comments.
 
-`CURLINFO_OFF_T`-tagged infos are rc2-only, unlike every other tag
-here: confirmed directly that real upstream RefC's own C backend
-crashes lowering any `Int64`-returning `%foreign` call ("INTERNAL
-ERROR: Unknown FFI type in C backend: Int_64") against the
-nixpkgs-packaged idris2 build used here, even though
-`Compiler.RefC.RefC`'s own `cTypeOfCFType`/`extractValue`/`packCFType`
-each do have a `CFInt64` case -- some other, unidentified stage still
-fails to route it there. `examples/GetInfoOfft.idr` is rc2-only by
-construction (not RefC/rc2 like every other example here) for this
-reason; `examples/GetInfo.idr` itself exercises the `_SLIST`/`_SOCKET`
-tags instead, both RefC-safe.
+`CURLINFO_OFF_T`-tagged infos are rc2-only, same as every other tag
+here -- `examples/GetInfoOfft.idr` exercises this one, alongside
+`examples/GetInfo.idr` for the `_SLIST`/`_SOCKET` tags.
 
 `CURLINFO_SLIST`'s own value (a `struct curl_slist *`) is read via
 `Network.Curl.Raw`'s own `curlSlistToList`, one shim per field

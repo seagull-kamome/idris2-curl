@@ -7,7 +7,7 @@ module Main
 -- header), curl_easy_reset, curl_easy_duphandle. curl_easy_getinfo
 -- isn't exercised here -- it has no Chez binding at all yet (see
 -- doc/const-char-ffi.md-style reasoning in Network.Curl.Raw's own doc
--- comment on prim__curlEasyGetinfoLong); a separate rc2/RefC-only
+-- comment on prim__curlEasyGetinfoLong); a separate rc2-only
 -- example covers it instead.
 
 import Network.Curl.Raw

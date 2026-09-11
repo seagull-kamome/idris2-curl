@@ -68,11 +68,11 @@ conversions off the same captured bytes, each independently one copy
 - **`toBuffer`**: `Buffer` (`Data.Buffer`, base library) has no public
   raw-pointer-fill API, only a byte-at-a-time `setBits8` (an FFI call
   per byte -- not a real memcpy). Idris2's own `Buffer` is
-  `{int size; char data[];}` at the C level on both RefC
-  (`idris2-src/support/refc/buffer.h`) and rc2
+  `{int size; char data[];}` at the C level on rc2
   (`rc2/support/rc2/buffer.h`, explicitly "ported from RefC's
   support/refc/buffer.c", "operates purely on the raw malloc'd
-  buffer") -- deliberately identical, so
+  buffer") -- upstream RefC uses the identical layout too, though this
+  repo no longer targets it -- so
   `idris2rc2_memstream_copy_into_buffer` reinterprets a `Buffer`
   reaching it as that same struct and `memcpy`s the captured bytes in
   directly, one shim, one copy, exact byte count (embedded-NUL-safe,
@@ -104,19 +104,9 @@ conversions off the same captured bytes, each independently one copy
   (`MemStream.toTextBuffer`) that has to check anyway, rather than
   left as a doc-comment precondition a caller could skip.
   `Data.TextBuffer`'s own implementation needs rc2's own runtime
-  headers (`rc2/datatypes.h`, via `text_util.h`), so unlike everything
-  else in this file, it isn't buildable against real upstream RefC at
-  all -- `curlEasyPerformToTextBuffer` and `examples/GetCaptureText.idr`
-  are rc2-only, split out from `examples/GetCapture.idr` (RefC/rc2,
-  `Buffer`/`String` only) for that reason.
-
-## Build note: `rc2base` needs its own `-l`/`-L` under plain RefC
-
-`System.IO.MemStream`'s own `%foreign` declarations name
-`libidris2rc2base` as their library -- `rc2`'s own `Compiler.RC2.CC`
-derives `-l<lib>` from that automatically, but plain upstream
-`idris2 --cg refc` doesn't (same gap as `-lcurl` itself, see
-`doc/const-char-ffi.md`'s own "Linker caveat"), so
-`IDRIS2_LDLIBS`/`IDRIS2_LDFLAGS` need `-lidris2rc2base`/
-`-L<rc2base's own installed lib dir>` set by hand there. See
-`AGENT.md`'s own "Build & test" section.
+  headers (`rc2/datatypes.h`, via `text_util.h`), on top of the same
+  gap `toBuffer` already has -- `curlEasyPerformToTextBuffer` and
+  `examples/GetCaptureText.idr` are rc2-only, split out from
+  `examples/GetCapture.idr` (`Buffer`/`String` only, also rc2-only --
+  `toBuffer`'s own Chez gap above already rules Chez out for that file
+  as a whole) for that additional reason.

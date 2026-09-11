@@ -1,7 +1,7 @@
 #ifndef IDRIS2CURL_COMPAT_H
 #define IDRIS2CURL_COMPAT_H
 
-/* rc2/RefC's own %foreign lowering treats a foreign function name as
+/* rc2's own %foreign lowering treats a foreign function name as
  * a bare C identifier, never a C expression -- see
  * idris2-rc-cg/TODO.md's own "CFString's hardcoded char * return
  * type" entry. Every libcurl function returning `const char *` needs
@@ -116,20 +116,14 @@ static inline char *idris2curl_url_strerror(int code) {
  * reason as idris2curl_getinfo_string above. NULL on failure, so a
  * non-NULL result is always a genuine libcurl allocation, distinct
  * from "part is genuinely empty" (CURLUE_OK, non-NULL, empty string)
- * -- Network.Curl.Raw's own curlUrlGet reads this back two different
- * ways depending on backend (rc2: `curlReadAndFree`'s GCAnyPtr, leak-
- * free; RefC: `Data.String.FFI.ptrToString`'s bare copy, since real
- * upstream RefC's own createCFunctions has a packCFType-vs-argument-
- * drop ordering bug -- see idris2-rc-cg's TODO.md, commit 2aa9b90,
- * which fixed the same bug on rc2 -- that makes reading a GCAnyPtr-
- * wrapped pointer back unsafe there), but both share this one shim:
- * unlike idris2curl_getinfo_string above, there's no backend where a
- * `char *`-returning %foreign target would even type-check here (the
- * output-pointer collapse still needs a shim; a raw AnyPtr return
- * doesn't need a *per-backend* one, so only one shim, not a Leaky/Raw
- * pair, exists for this call). One URL part's worth of leaked bytes
- * (rarely more than a few dozen) per call on RefC only, not
- * unbounded, not accumulating per network request. */
+ * -- Network.Curl.Raw's own curlUrlGet reads this back leak-free via
+ * `curlReadAndFree`'s GCAnyPtr (safe on both this project's remaining
+ * backends -- idris2-rc-cg commit 2aa9b90). Only one shim exists here
+ * (not a per-backend pair): unlike idris2curl_getinfo_string above,
+ * there's no backend where a `char *`-returning %foreign target would
+ * even type-check here -- the output-pointer collapse still needs a
+ * shim, but reading a raw AnyPtr return back is the same on every
+ * backend that reaches this shim at all. */
 static inline void *idris2curl_url_get_raw(CURLU *u, int what, unsigned int flags) {
     char *part = NULL;
     CURLUcode rc = curl_url_get(u, (CURLUPart) what, &part, flags);
@@ -139,11 +133,12 @@ static inline void *idris2curl_url_get_raw(CURLU *u, int what, unsigned int flag
 /* curl_version_info() returns curl_version_info_data*, a real C
  * struct with ~20 fields (curl/curl.h) -- not a scalar %foreign can
  * hand back directly. Rather than bind System.FFI's own Struct/
- * getField (Chez supports it, but upstream RefC itself doesn't --
- * rc2/doc/c-struct-support.md's own "What's confirmed" section; only
- * rc2's later addition does -- so it wouldn't build under plain
- * RefC), these shims read one field each off the same struct pointer,
- * same "collapse to a scalar return" idea as idris2curl_getinfo_*
+ * getField (rc2 now implements it, doc/version-info-struct.md's own
+ * "Why not Struct/getField" -- rejected specifically because rc2
+ * unconditionally re-`typedef`s any struct name it's given, colliding
+ * with curl/curl.h's own `curl_version_info_data` typedef), these
+ * shims read one field each off the same struct pointer, same
+ * "collapse to a scalar return" idea as idris2curl_getinfo_*
  * above. Only the handful of fields actually useful without also
  * binding curl_version_info_data's own `protocols`/`feature_names`
  * (NULL-terminated string arrays -- no Idris-side array-of-CFString
@@ -271,8 +266,9 @@ static inline void *idris2curl_easy_header(CURL *h, const char *name, unsigned i
 
 /* curl_header's own fields, read the same "one shim per field" way
  * idris2curl_version_info_ and idris2curl_multimsg_ above do, rather
- * than System.FFI's own Struct/getField (upstream RefC doesn't
- * implement it at all, same reasoning as doc/version-info-struct.md).
+ * than System.FFI's own Struct/getField (same reasoning as
+ * doc/version-info-struct.md -- rc2 would re-`typedef` `curl_header`,
+ * colliding with curl/header.h's own definition of it).
  * `amount`/`index` (both `size_t`) aren't exposed -- no concrete need
  * yet to distinguish "which occurrence of a repeated header" beyond
  * always reading the first (see idris2curl_easy_header's own

@@ -3,7 +3,7 @@ module Main
 -- Copyright 2026, Hattori,Hiroki. All rights reserved.
 -- This module was licensed by BSD3.
 
--- rc2/RefC-only: exercises the curl_multi_* interface (concurrent
+-- rc2-only: exercises the curl_multi_* interface (concurrent
 -- transfers on a single thread). curl_multi_perform/wait/info_read
 -- have no Chez binding at all -- see Network.Curl.Raw's own doc
 -- comment on prim__curlMultiPerform. Building this against Chez fails

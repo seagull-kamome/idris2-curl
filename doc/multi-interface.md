@@ -1,4 +1,4 @@
-# Binding `curl_multi_*`: output pointers throughout, RefC/rc2-only
+# Binding `curl_multi_*`: output pointers throughout, rc2-only
 
 Every function actually driving a multi-handle transfer loop --
 `curl_multi_perform`, `curl_multi_wait`, `curl_multi_info_read` --
@@ -10,7 +10,7 @@ needed a `csrc/` shim for. `curl_multi_init`/`curl_multi_cleanup`/
 `curl_multi_strerror` don't have this problem (plain arguments/return,
 or -- for `curl_multi_strerror` -- the same `const char *` cast
 `curl_easy_strerror` needed) and are bound directly/via the usual
-three-target pattern.
+two-target pattern.
 
 ## The three shims
 
@@ -34,9 +34,15 @@ three-target pattern.
 
 ## Reading a `CURLMsg` without `Struct`/`getField`
 
-Same reasoning as `doc/version-info-struct.md`: rather than bind
-`CURLMsg` as a `Struct` (Chez-only, upstream RefC doesn't implement
-`getField`/`setField` at all), three more shims --
+Same reasoning as `doc/version-info-struct.md`'s own "Why not
+`Struct`/`getField`" -- `CURLMsg` is `typedef`'d by `curl/multi.h`
+already, so a rc2 `Struct "CURLMsg" [...]` binding would collide with
+that at the C-compile step the same way `curl_version_info_data` did.
+`CURLMsg` also has a second problem `curl_version_info_data` didn't:
+its own `data` field is a real C `union` (`curl/multi.h`), and
+`Struct`'s field-list DSL has no way to express "this position is a
+union of several types" at all -- there's no candidate field type to
+even attempt a `Struct` binding with. Three shims --
 `idris2curl_multimsg_msg`/`_easy_handle`/`_result` -- each read one
 field off the opaque pointer `idris2curl_multi_info_read` handed back.
 `Network.Curl.Raw`'s own `curlMultiInfoRead` calls all three and
@@ -52,11 +58,10 @@ are expected to check `msg` first, same as libcurl's own C API expects.
 
 ## No Chez binding at all -- same reasoning as `curl_easy_getinfo`
 
-Confirmed the same way as every other RefC/rc2-only binding in this
-repo: a `%foreign` with only `"RefC:..."`/`"RC2:..."` targets still
-type-checks fine under Chez, only failing -- cleanly, "was not
-accepted by any backend" -- at the specific call site of a program
-that's actually compiled against Chez. `examples/Multi.idr` (the one
-place `curlMultiPerform`/`curlMultiWait`/`curlMultiInfoRead` are
-called) is RefC/rc2-only by construction, not part of Chez's own
-examples build.
+Confirmed the same way as every other rc2-only binding in this repo: a
+`%foreign` with only an `"RC2:..."` target still type-checks fine
+under Chez, only failing -- cleanly, "was not accepted by any
+backend" -- at the specific call site of a program that's actually
+compiled against Chez. `examples/Multi.idr` (the one place
+`curlMultiPerform`/`curlMultiWait`/`curlMultiInfoRead` are called) is
+rc2-only by construction, not part of Chez's own examples build.

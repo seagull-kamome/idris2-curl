@@ -8,9 +8,9 @@ sentinel (`(size_t)-1`) via a plain Idris `-1 : Int`.
 
 Idris's own plain `Int` maps to a **32-bit C `int`** under the Chez
 backend specifically (`Compiler.Scheme.Chez`'s own
-`cftySpec CFInt = "int"`), but RefC and rc2 both treat `CFInt` as
-**64-bit** (`cTypeOfCFType CFInt = "int64_t"`/`idris2rc2_to_i64`, in
-each backend's own `Emit.idr`/`RefC.idr`).
+`cftySpec CFInt = "int"`), but rc2 treats `CFInt` as **64-bit**
+(`cTypeOfCFType CFInt = "int64_t"`/`idris2rc2_to_i64`, in its own
+`Emit.idr`).
 
 For a small non-negative value (`0`, `1`, `41`, ...) this never
 matters -- the same bit pattern reads correctly whether the receiving
@@ -23,21 +23,27 @@ yourself" as a sentinel, not literally "negative one") is. A 32-bit
 `(size_t)-1` (`0xFFFFFFFFFFFFFFFF`) -- confirmed directly: passing
 `-1 : Int` here crashed with "invalid memory reference" under Chez
 specifically (libcurl reading `datasize` bytes starting from a 5-byte
-string, past the end of the actual allocation), while RefC and rc2
-were unaffected (both already treat `Int` as 64-bit, so their own `-1`
-bit pattern is already all-ones).
+string, past the end of the actual allocation), while rc2 was
+unaffected (already treats `Int` as 64-bit, so its own `-1` bit
+pattern is already all-ones).
 
-## Why `Int64` doesn't fix it either
+## Why `Int64` wasn't reached for instead
 
-Switching the FFI argument's own type to `Int64` makes Chez's own bit
-pattern for `-1` correctly all-ones too (`cftySpec CFInt64 =
-"integer-64"`) -- but breaks RefC instead: RefC's own `cTypeOfCFType`/
-`extractValue`/`packCFType` have no `CFInt64` case reachable through
-however the actual installed toolchain's frontend produces it here,
-crashing at compile time with "INTERNAL ERROR: Unknown FFI type in C
-backend: Int_64". Confirmed directly, not just inferred: rc2 (which
-does have a `CFInt64` case in its own `Emit.idr`) built this exact
-same declaration successfully.
+Switching the FFI argument's own type to `Int64` would make Chez's own
+bit pattern for `-1` correctly all-ones too (`cftySpec CFInt64 =
+"integer-64"`), and rc2 already has a working `CFInt64` case in its
+own `Emit.idr` -- so `Int64` would in fact have fixed this cleanly on
+both of this project's current backends. It was originally rejected
+because this project also targeted upstream RefC at the time, and real
+upstream RefC's own `cTypeOfCFType`/`extractValue`/`packCFType` had no
+`CFInt64` case reachable through however the actual installed
+toolchain's frontend produced it, crashing at compile time with
+"INTERNAL ERROR: Unknown FFI type in C backend: Int_64". Recorded here
+for the historical reasoning even though RefC is no longer a target --
+the "avoid sentinel bit patterns" fix below is still the better
+practice regardless (works identically on any future backend, no
+width assumption to get right at all), so the code was never reverted
+to `Int64` after RefC support was dropped.
 
 ## The actual fix: never rely on a sentinel bit pattern
 

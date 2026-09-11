@@ -3,7 +3,7 @@ module Main
 -- Copyright 2026, Hattori,Hiroki. All rights reserved.
 -- This module was licensed by BSD3.
 
--- RefC/rc2-only: captures a response body into Idris without ever
+-- rc2-only: captures a response body into Idris without ever
 -- binding CURLOPT_WRITEFUNCTION, via curlEasyPerformToBuffer/
 -- curlEasyPerformToString -- see doc/memstream-capture.md and
 -- Network.Curl.Raw's own doc comment on curlEasyPerformToBuffer.

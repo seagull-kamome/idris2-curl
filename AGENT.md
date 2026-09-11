@@ -31,19 +31,20 @@ C codegen backend, not just the default Chez backend.
 - `csrc/` — small C shims a binding needs beyond a plain `%foreign`
   declaration (currently `idris2curl_compat.h`, see `doc/`)
 - `examples/` — small standalone programs that exercise the bindings
-  end to end, used to verify they build/link/run on Chez, upstream
-  RefC, and `idris2-rc-cg`'s `rc2` backend -- except `GetInfo.idr`,
-  `UrlGet.idr`, `VersionInfo.idr`, `Multi.idr`, and `Header.idr`, which
-  are RefC/rc2-only (see `doc/variadic-getinfo.md`/
-  `doc/version-info-struct.md`/`doc/multi-interface.md`), `GetCapture.idr`
-  (`doc/memstream-capture.md`), and `GetInfoOfft.idr`/
-  `GetCaptureText.idr`, which are rc2-only (not even upstream RefC --
-  see `doc/variadic-getinfo.md`'s own `CURLINFO_OFF_T`/`Int64` section,
-  `doc/memstream-capture.md`'s own `Data.TextBuffer` section)
+  end to end, used to verify they build/link/run on Chez and
+  `idris2-rc-cg`'s `rc2` backend -- except `GetInfo.idr`,
+  `UrlGet.idr`, `VersionInfo.idr`, `Multi.idr`, `Header.idr`,
+  `GetCapture.idr`, `GetInfoOfft.idr`, and `GetCaptureText.idr`, which
+  are rc2-only (see `doc/variadic-getinfo.md`/
+  `doc/version-info-struct.md`/`doc/multi-interface.md`/
+  `doc/memstream-capture.md` -- `GetInfoOfft.idr`'s own
+  `CURLINFO_OFF_T`/`Int64` gap and `GetCaptureText.idr`'s own
+  `Data.TextBuffer` gap are rc2-specific reasons beyond the plain
+  "no Chez binding" every other rc2-only example shares)
 - `doc/` — implementation deep-dives, meant to let a future session
   regain context without re-deriving the design (currently:
   `const-char-ffi.md` for why a `const char *`-returning libcurl
-  function needs a `csrc/` shim and three separate `%foreign` targets,
+  function needs a `csrc/` shim and two separate `%foreign` targets,
   one per backend; `variadic-getinfo.md` for why `curl_easy_getinfo`/
   `curl_url_get` have no Chez binding at all; `version-info-struct.md`
   for why `curl_version_info` (a real C struct, not a scalar) is bound
@@ -51,12 +52,12 @@ C codegen backend, not just the default Chez backend.
   `Struct`/`getField`; `multi-interface.md` for the same output-pointer/
   no-Chez-binding reasoning applied to `curl_multi_*`;
   `int-width-pitfall.md` for why a negative/sentinel `Int` `%foreign`
-  argument (e.g. `CURL_ZERO_TERMINATED`) isn't safe on this project's
-  three backends -- `Int`'s own width differs by backend, and `Int64`
-  isn't a portable fix either; `memstream-capture.md` for capturing a
-  response body into a `Buffer`/`String`/`TextBuffer` -- one copy each
-  -- without binding `CURLOPT_WRITEFUNCTION`, via `CURLOPT_WRITEDATA`
-  and `open_memstream(3)`)
+  argument (e.g. `CURL_ZERO_TERMINATED`) isn't safe on both this
+  project's backends -- `Int`'s own width differs by backend; 
+  `memstream-capture.md` for capturing a response body into a
+  `Buffer`/`String`/`TextBuffer` -- one copy each -- without binding
+  `CURLOPT_WRITEFUNCTION`, via `CURLOPT_WRITEDATA` and
+  `open_memstream(3)`)
 - `TODO.md` — open gaps and deferred design decisions (removed once
   implemented and documented elsewhere)
 
@@ -121,19 +122,8 @@ IDRIS2_PREFIX="$(pwd)/.local-install" idris2 --install package.ipkg
 export IDRIS2_CFLAGS="-Icsrc"
 IDRIS2_PREFIX="$(pwd)/.local-install" idris2 -p curl -p rc2base -o get examples/Get.idr
 ```
-`examples/GetInfo.idr` is RefC/rc2-only -- it has no Chez `%foreign`
+`examples/GetInfo.idr` is rc2-only -- it has no Chez `%foreign`
 target at all (`doc/variadic-getinfo.md`) and fails to build here.
-
-Against plain upstream `idris2 --cg refc` (needs `IDRIS2_LDLIBS` set
-by hand -- rc2's own automatic `-l<lib>` derivation, see below, hasn't
-been upstreamed -- for `rc2base` too, not just `libcurl`):
-```sh
-RC2BASE_LIB="../idris2-rc-cg/libs/rc2base/.local-install/idris2-0.8.0/rc2base-0.1.0/lib"
-export IDRIS2_CFLAGS="-Icsrc -I$RC2BASE_LIB"
-export IDRIS2_LDFLAGS="-L$RC2BASE_LIB"
-export IDRIS2_LDLIBS="$(pkg-config --libs libcurl) -lidris2rc2base"
-IDRIS2_PREFIX="$(pwd)/.local-install" idris2 --cg refc -p curl -p rc2base -o get_refc examples/Get.idr
-```
 
 Against `idris2-rc-cg`'s rc2 backend (requires that repo checked out
 as a sibling directory, its own `env.sh` sourced, `rc2base` installed
@@ -150,12 +140,11 @@ export IDRIS2_LDFLAGS="$(pkg-config --libs-only-L libcurl) -L../idris2-rc-cg/lib
 -- see `doc/const-char-ffi.md`'s own "Linker caveat" section for the
 full story. Only the `-L` search path above (nix's libcurl isn't on
 the linker's default path) and, at *run* time, `LD_LIBRARY_PATH`
-pointing at the same directory are still needed by hand under either
-static backend.
+pointing at the same directory are still needed by hand.
 
 See `doc/const-char-ffi.md` for why `curl_easy_strerror` (and any
 future `const char *`-returning binding) needs `csrc/`'s own shim and
-three separate `%foreign` targets, one per backend, and
+two separate `%foreign` targets, one per backend, and
 `doc/variadic-getinfo.md` for why `curl_easy_getinfo` has no Chez
 binding at all.
 

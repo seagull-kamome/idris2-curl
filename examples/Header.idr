@@ -3,7 +3,7 @@ module Main
 -- Copyright 2026, Hattori,Hiroki. All rights reserved.
 -- This module was licensed by BSD3.
 
--- rc2/RefC-only: exercises curl_easy_header/curl_easy_nextheader,
+-- rc2-only: exercises curl_easy_header/curl_easy_nextheader,
 -- which have no Chez binding at all (see Network.Curl.Raw's own doc
 -- comment on prim__curlEasyHeader). Building this against Chez fails
 -- cleanly at this file's own curlEasyHeader/curlEasyNextheader call

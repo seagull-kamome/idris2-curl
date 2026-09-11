@@ -3,14 +3,12 @@ module Main
 -- Copyright 2026, Hattori,Hiroki. All rights reserved.
 -- This module was licensed by BSD3.
 
--- rc2-only, not RefC/rc2 like GetInfo.idr: exercises
--- curl_easy_getinfo's own CURLINFO_OFF_T tag (CURLINFO_SIZE_DOWNLOAD_T),
--- which needs an Int64-returning %foreign target -- confirmed directly
--- that real upstream RefC's own C backend crashes on that ("INTERNAL
--- ERROR: Unknown FFI type in C backend: Int_64"), see
--- Network.Curl.Raw's own doc comment on prim__curlEasyGetinfoOfft.
--- Chez has no binding here either, same doc/variadic-getinfo.md
--- reasoning as every other curlEasyGetinfo* function.
+-- rc2-only: exercises curl_easy_getinfo's own CURLINFO_OFF_T tag
+-- (CURLINFO_SIZE_DOWNLOAD_T), which needs an Int64-returning %foreign
+-- target -- see Network.Curl.Raw's own doc comment on
+-- prim__curlEasyGetinfoOfft. Chez has no binding here either, same
+-- doc/variadic-getinfo.md reasoning as every other curlEasyGetinfo*
+-- function.
 
 import Network.Curl.Raw
 import Network.Curl.Types

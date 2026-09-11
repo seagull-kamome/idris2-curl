@@ -1,4 +1,4 @@
-# Binding `curl_version_info`: a real C struct, RefC/rc2-only
+# Binding `curl_version_info`: a real C struct, rc2-only
 
 `curl_version_info(CURLVERSION_NOW)` returns
 `curl_version_info_data *` -- a real C struct with ~20 fields
@@ -10,21 +10,36 @@ hand back directly.
 ## Why not `System.FFI`'s `Struct`/`getField`
 
 Idris2 has a purpose-built mechanism for exactly this: `System.FFI`'s
-`Struct`/`getField`/`setField`. Not used here because it doesn't work
-across all three backends this repo targets -- **Chez supports it, but
-upstream RefC doesn't** (`rc2/doc/c-struct-support.md`'s own "What's
-confirmed" section: `getField`/`setField` compile cleanly under plain
-RefC but fail at the C-compile step, since RefC's own generated code
-calls a `getField`/`setField` runtime helper that plain
-`support/refc/` never defines; only `rc2`'s own later addition
-implements it, with a regression test). Binding `curl_version_info`
-through `Struct`/`getField` would work on Chez and rc2 but not plain
-`idris2 --cg refc` -- accepted as a real gap for now (see this repo's
-own "RefC で構造体関係で動かないのは許容します" decision), but not
-worth reaching for on a first pass when the shim approach below
-already covers Chez/RefC/rc2 uniformly for the fields actually needed.
+`Struct`/`getField`/`setField`, and rc2 now implements it
+(`rc2/doc/c-struct-support.md`). Tried directly against
+`curl_version_info_data` specifically and rejected, for a reason
+unrelated to backend coverage: **rc2 unconditionally emits its own
+`typedef struct { ... } name;` for every struct name mentioned in a
+`Struct "name" [...]`** (`c-struct-support.md`'s own Part C). For a
+struct a *library header already defines* -- `curl_version_info_data`
+is `typedef`'d by `curl/curl.h`, included via this same `%foreign`
+declaration's own header field -- that collides outright:
+```
+error: conflicting types for 'curl_version_info_data'
+```
+confirmed directly by compiling exactly that (a
+`Struct "curl_version_info_data" [("version", String), ...]`
+`%foreign` binding, real `curl/curl.h` included). A differently-named
+"view" struct sidesteps the redefinition error, but only by hand-
+replicating the real struct's own field layout (order *and* exact
+width -- `curl_version_info_data`'s own leading `CURLversion age` is a
+4-byte C enum, not `Int`'s 64-bit default on rc2; get one field's width
+wrong and every later field's offset is silently off), for a struct
+this repo doesn't own and libcurl could reorder or extend release to
+release -- strictly more fragile than the one-shim-per-field approach
+below, which lets the real `curl/curl.h` struct definition (via a real
+C dereference, `%include`d) compute every offset instead of an Idris
+programmer replicating them by hand. `getField`/`setField` remain the
+right tool for a struct *this program defines itself* under a name
+that appears nowhere else (`rc2/tests/Test24CStructSupport.idr`'s own
+`test_point`) -- not for reflecting into an existing library's struct.
 
-## The fix: one shim per field, RefC/rc2-only
+## The fix: one shim per field, rc2-only
 
 `csrc/idris2curl_compat.h` holds one `static inline` shim per field
 actually used, each calling `curl_version_info(CURLVERSION_NOW)`
@@ -46,7 +61,9 @@ as `doc/const-char-ffi.md`/`doc/variadic-getinfo.md` applies here too:
 no plain `"C:..."` target exists for any of these, so there's no Chez
 binding at all -- confirmed the same way (type-checks fine, fails
 cleanly with "was not accepted by any backend" only at
-`examples/VersionInfo.idr`'s own actual call sites under Chez).
+`examples/VersionInfo.idr`'s own actual call sites under Chez), the
+same gap `Struct`/`getField` would have hit for an unrelated reason
+(see above) even if this were rewritten to use it.
 
 ## Fields bound so far
 

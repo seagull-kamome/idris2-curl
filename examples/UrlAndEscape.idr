@@ -7,7 +7,7 @@ module Main
 -- curl_version, and the curl_url_* URL API -- except curl_url_get,
 -- which (like curl_easy_getinfo) has no Chez binding at all, see
 -- Network.Curl.Raw's own doc comment on prim__curlUrlGet. A separate
--- rc2/RefC-only example covers that instead.
+-- rc2-only example covers that instead.
 
 import Network.Curl.Raw
 import Network.Curl.Types

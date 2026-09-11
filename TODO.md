@@ -57,7 +57,7 @@ a concrete need comes up.
 
 Bound: `curl_easy_pause`/`curl_easy_upkeep` (fully bound on all three
 backends, no output-pointer trouble) and `curl_easy_header`/
-`curl_easy_nextheader` (the structured header API -- RefC/rc2 only,
+`curl_easy_nextheader` (the structured header API -- rc2 only,
 same `struct curl_header` output-pointer/field-access reasoning as
 `curl_version_info`/`CURLMsg`; see `Network.Curl.Raw`'s own doc
 comment on `prim__curlEasyHeader`). `curl_easy_pause` itself is only
@@ -88,20 +88,4 @@ one bound constant each -- `off_t` is represented as `Int64`
 (`curl_off_t` is always a real 64-bit signed integer in libcurl
 itself, independent of the host platform's own `long` width).
 
-## `curl_url_get`/`curl_easy_escape`/`curl_easy_unescape` still leak on RefC
-
-All three hand back a libcurl-allocated string, meant to be released
-with `curl_free()` once read. Fixed leak-free on Chez and rc2 via a
-`codegen`-dispatched `GCAnyPtr`/`onCollectAny` read path (see
-`curlReadAndFree`'s own doc comment, `src/Network/Curl/Raw.idr`,
-and `idris2curl_url_get_raw`'s, `csrc/idris2curl_compat.h`) -- real
-upstream RefC still gets the original small-leak path
-(`prim__curlEasyEscapeLeaky`-style bindings) instead, since
-`idris2-src/src/Compiler/RefC/RefC.idr`'s own `createCFunctions` has
-an unfixed packCFType-vs-argument-drop ordering bug that makes reading
-a `GCAnyPtr` back unsafe there (root-caused and fixed on rc2 in
-`idris2-rc-cg` commit `2aa9b90`; would need reporting/fixing upstream,
-idris-lang/Idris2, to drop the RefC branch entirely). One string's
-worth of leaked bytes per call on RefC only (rarely more than a few
-dozen), not unbounded, not accumulating per network request.
 

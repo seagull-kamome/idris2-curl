@@ -53,9 +53,19 @@ defined.
 Being implemented incrementally, working through libcurl's own public
 API surface roughly in order of practical usefulness. See `TODO.md`
 for the current list of gaps (callback options like
-`CURLOPT_WRITEFUNCTION`, `curl_version_info`, the multi/share/mime
-interfaces, smaller easy-interface gaps, and a couple of deliberately
-accepted small memory leaks).
+`CURLOPT_WRITEFUNCTION`, the multi/share/mime interfaces, and
+smaller easy-interface gaps).
+
+## `Network.Curl.Fetch` -- a JS `fetch()`-shaped convenience layer
+
+`src/Network/Curl/Fetch.idr` wraps the raw bindings above into
+`fetch : FetchRequest -> io (Either FetchError FetchResponse)` (plus
+`fetchBytes`/`fetchText`/`get`/`post`/`request`) -- one function call
+per request, no `curl_global_init`/`curl_easy_init`/setopt/`curl_slist`
+bookkeeping of your own. **rc2-only as a whole**: the HTTP status code
+itself needs `curl_easy_getinfo`, which has no Chez binding at all
+(same reason as `curl_easy_getinfo` above) -- see the module's own
+header comment. `examples/Fetch.idr` exercises it end to end.
 
 ## Backends
 
@@ -76,8 +86,8 @@ idris2 --build package.ipkg
 
 builds and type-checks the library itself against the default Chez
 backend. See `AGENT.md`'s own "Build & test" section for building
-`examples/*.idr` against the library on any of the three backends
-above (local installation, include/link flags, etc.).
+`examples/*.idr` against the library on either backend above (local
+installation, include/link flags, etc.).
 
 ## License
 

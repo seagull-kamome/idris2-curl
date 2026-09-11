@@ -57,6 +57,52 @@ public export
 curlopt_WRITEDATA : CURLoption
 curlopt_WRITEDATA = MkCURLoption 10001 -- CURLOPTTYPE_CBPOINT + 1
 
+||| `1` selects a plain `GET` -- only useful to force it back after a
+||| handle was previously configured for `POST`/`CUSTOMREQUEST`/etc.
+||| (`curl_easy_setopt(3)`'s own note); a fresh handle already
+||| defaults to `GET`. See `Network.Curl.Fetch`'s own `applyMethod`.
+public export
+curlopt_HTTPGET : CURLoption
+curlopt_HTTPGET = MkCURLoption 80 -- CURLOPTTYPE_LONG + 80
+
+||| `1` skips the response body entirely (`HEAD`-shaped request) --
+||| still sends whatever HTTP method is otherwise configured, so pair
+||| with `curlopt_HTTPGET` for a real `HEAD`.
+public export
+curlopt_NOBODY : CURLoption
+curlopt_NOBODY = MkCURLoption 44 -- CURLOPTTYPE_LONG + 44
+
+||| `1` selects `POST`, sending whatever `curlopt_COPYPOSTFIELDS` (or
+||| the older `curlopt_POSTFIELDS`, not bound here) was set to as the
+||| request body.
+public export
+curlopt_POST : CURLoption
+curlopt_POST = MkCURLoption 47 -- CURLOPTTYPE_LONG + 47
+
+||| Follow `Location:` response headers automatically (`3xx`
+||| redirects) -- `1` to enable, unset (`0`) is libcurl's own default.
+public export
+curlopt_FOLLOWLOCATION : CURLoption
+curlopt_FOLLOWLOCATION = MkCURLoption 52 -- CURLOPTTYPE_LONG + 52
+
+||| Overrides the HTTP method's own verb string sent on the wire --
+||| `"PUT"`/`"PATCH"`/`"DELETE"`/anything else libcurl doesn't have a
+||| dedicated option for. Does not itself imply a request body; pair
+||| with `curlopt_COPYPOSTFIELDS` for one.
+public export
+curlopt_CUSTOMREQUEST : CURLoption
+curlopt_CUSTOMREQUEST = MkCURLoption 10036 -- CURLOPTTYPE_OBJECTPOINT + 36
+
+||| The request body, copied immediately (unlike the older
+||| `CURLOPT_POSTFIELDS`, which just stores the pointer -- libcurl
+||| would then need the caller's own buffer to outlive the transfer).
+||| Despite the name, sent with whatever method is otherwise
+||| configured (`curlopt_POST`/`curlopt_CUSTOMREQUEST`), not only
+||| `POST` (`curl_easy_setopt(3)`'s own note on `CURLOPT_COPYPOSTFIELDS`).
+public export
+curlopt_COPYPOSTFIELDS : CURLoption
+curlopt_COPYPOSTFIELDS = MkCURLoption 10165 -- CURLOPTTYPE_OBJECTPOINT + 165
+
 ||| A libcurl `CURLINFO` -- the value passed as `curl_easy_getinfo`'s
 ||| own second argument. Every value below is `CURLINFO_*`'s own
 ||| `CURLINFO_STRING`/`CURLINFO_LONG`/`CURLINFO_DOUBLE`/`CURLINFO_SLIST`/

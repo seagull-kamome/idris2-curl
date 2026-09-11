@@ -28,6 +28,11 @@ C codegen backend, not just the default Chez backend.
   records and hand-written constants (no `%runElab` deriving)
 - `src/Network/Curl/Raw.idr` — direct `%foreign "C:curl_*,libcurl,curl/curl.h"`
   declarations, one per bound libcurl function
+- `src/Network/Curl/Fetch.idr` — a JS `fetch()`-shaped convenience
+  layer built on `Raw.idr` (`fetch`/`fetchBytes`/`fetchText`/`get`/
+  `post`/`request`) -- rc2-only as a whole, since the HTTP status code
+  itself needs `curl_easy_getinfo` (no Chez binding at all); see its
+  own header comment
 - `csrc/` — small C shims a binding needs beyond a plain `%foreign`
   declaration (currently `idris2curl_compat.h`, see `doc/`)
 - `examples/` — small standalone programs that exercise the bindings

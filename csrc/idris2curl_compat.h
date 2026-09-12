@@ -78,8 +78,8 @@ static inline void *idris2curl_getinfo_slist(CURL *h, int info) {
 }
 
 /* struct curl_slist's own two fields, one shim each, same "one shim
- * per field" idea as idris2curl_version_info_/idris2curl_multimsg_
- * above. `data` is read through Data.String.FFI's own `ptrToString`
+ * per field" idea as idris2curl_multimsg_ below. `data` is read
+ * through Data.String.FFI's own `ptrToString`
  * on the Idris side -- a bare copy, no curl_free/GC registration,
  * since ownership of every node's own `data` belongs to the list as a
  * whole (released in one shot by curl_slist_free_all(), never per
@@ -130,52 +130,9 @@ static inline void *idris2curl_url_get_raw(CURLU *u, int what, unsigned int flag
     return (rc == CURLUE_OK) ? (void *) part : NULL;
 }
 
-/* curl_version_info() returns curl_version_info_data*, a real C
- * struct with ~20 fields (curl/curl.h) -- not a scalar %foreign can
- * hand back directly. Rather than bind System.FFI's own Struct/
- * getField (rc2 now implements it, doc/version-info-struct.md's own
- * "Why not Struct/getField" -- rejected specifically because rc2
- * unconditionally re-`typedef`s any struct name it's given, colliding
- * with curl/curl.h's own `curl_version_info_data` typedef), these
- * shims read one field each off the same struct pointer, same
- * "collapse to a scalar return" idea as idris2curl_getinfo_*
- * above. Only the handful of fields actually useful without also
- * binding curl_version_info_data's own `protocols`/`feature_names`
- * (NULL-terminated string arrays -- no Idris-side array-of-CFString
- * binding exists yet) are covered: version string, numeric version,
- * build host triple, the feature bitmask, and the SSL backend's own
- * version string. curl_version_info(CURLVERSION_NOW) itself returns a
- * pointer to a static, library-owned struct (never freed, never
- * reallocated) -- calling it repeatedly, once per field read here, is
- * cheap and never invalidates a previous shim's own return value. */
-static inline char *idris2curl_version_info_version(void) {
-    const char *v = curl_version_info(CURLVERSION_NOW)->version;
-    return (char *) (v == NULL ? "" : v);
-}
-
-static inline unsigned int idris2curl_version_info_version_num(void) {
-    return curl_version_info(CURLVERSION_NOW)->version_num;
-}
-
-static inline char *idris2curl_version_info_host(void) {
-    const char *v = curl_version_info(CURLVERSION_NOW)->host;
-    return (char *) (v == NULL ? "" : v);
-}
-
-static inline int idris2curl_version_info_features(void) {
-    return curl_version_info(CURLVERSION_NOW)->features;
-}
-
-/* Unlike version/host above, `ssl_version` genuinely can be NULL --
- * per curl_version_info(3), it's set only when libcurl was built with
- * SSL support, NULL otherwise -- so this one hands back the raw
- * pointer (NULL passthrough, no "" substitution) for
- * Network.Curl.Raw's own curlVersionInfoSslVersion to read via
- * Data.String.FFI.ptrToString, distinguishing "no SSL backend" from a
- * (never actually occurring) empty name. */
-static inline char *idris2curl_version_info_ssl_version(void) {
-    return (char *) curl_version_info(CURLVERSION_NOW)->ssl_version;
-}
+/* curl_version_info_data itself is now bound via System.FFI's own
+ * Struct/getField (Network.Curl.Raw's own VersionInfoPtr) instead of a
+ * shim here -- see doc/version-info-struct.md. */
 
 static inline char *idris2curl_multi_strerror(int code) {
     return (char *) curl_multi_strerror((CURLMcode) code);
@@ -265,10 +222,11 @@ static inline void *idris2curl_easy_header(CURL *h, const char *name, unsigned i
 }
 
 /* curl_header's own fields, read the same "one shim per field" way
- * idris2curl_version_info_ and idris2curl_multimsg_ above do, rather
- * than System.FFI's own Struct/getField (same reasoning as
- * doc/version-info-struct.md -- rc2 would re-`typedef` `curl_header`,
- * colliding with curl/header.h's own definition of it).
+ * idris2curl_multimsg_ above does, rather than System.FFI's own
+ * Struct/getField -- `%cg rc2 externStruct=curl_header` would sidestep
+ * the same typedef collision doc/version-info-struct.md documents for
+ * curl_version_info_data (curl/header.h already typedefs
+ * `curl_header` too), not attempted here yet -- see TODO.md.
  * `amount`/`index` (both `size_t`) aren't exposed -- no concrete need
  * yet to distinguish "which occurrence of a repeated header" beyond
  * always reading the first (see idris2curl_easy_header's own

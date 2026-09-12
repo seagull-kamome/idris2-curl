@@ -111,7 +111,7 @@ prim__curlEasyGetinfoOfft : AnyPtr -> Int -> PrimIO Int64
 prim__curlEasyGetinfoSlist : AnyPtr -> Int -> PrimIO AnyPtr
 
 -- `struct curl_slist`'s own two fields, one shim each, same "one shim
--- per field" idea as prim__curlVersionInfo*/prim__curlMultimsg* below.
+-- per field" idea as prim__curlMultimsg* below.
 %foreign "RC2:idris2curl_slist_data,libcurl,idris2curl_compat.h"
 prim__curlSlistData : AnyPtr -> PrimIO AnyPtr
 
@@ -154,31 +154,45 @@ prim__curlGetStringGC : GCAnyPtr -> PrimIO String
 %foreign "C:curl_version,libcurl,curl/curl.h"
 prim__curlVersion : PrimIO String
 
--- curl_version_info() returns a real C struct, not a scalar -- see
--- idris2curl_version_info_version's own doc comment
--- (idris2curl_compat.h) for why these route through per-field shims
--- (rc2-only, no Chez binding, same "static inline, static linking
--- only" reasoning as curl_easy_getinfo) rather than System.FFI's own
--- Struct/getField.
-%foreign "RC2:idris2curl_version_info_version,libcurl,idris2curl_compat.h"
-prim__curlVersionInfoVersion : PrimIO String
+-- curl_version_info() returns curl_version_info_data* -- a real C
+-- struct (curl/curl.h), not a scalar %foreign can hand back directly.
+-- Bound via System.FFI's own Struct/getField now that rc2's own
+-- `%cg rc2 externStruct=<name>` directive (idris2-rc-cg's
+-- rc2/doc/directives.md) exists to suppress rc2's own conflicting
+-- `typedef struct` for a name curl/curl.h already typedefs itself --
+-- see doc/version-info-struct.md for the full history (an
+-- externStruct-less attempt at exactly this was tried and rejected
+-- first). rc2-only regardless: getField/setField's own C-struct-
+-- backed implementation has no Chez equivalent here (Chez's own
+-- Struct/getField goes through a from-scratch `define-ftype`
+-- computed from this same field list rather than the real header's
+-- own layout -- safe only for a struct this repo defines itself, not
+-- one reflecting into curl/curl.h, so not attempted).
+--
+-- Deliberately only the same 5 fields the pre-Struct/getField shim
+-- design bound (version/version_num/host/features/ssl_version) --
+-- NOT the full ~25-field struct. A first attempt at binding every
+-- non-array field OOM-crashed idris2 itself at compile time (observed
+-- directly, not a guess -- `out of memory`/SIGABRT under Chez, with a
+-- 6GB `ulimit -v` in place): upstream `System.FFI`'s `getField`
+-- elaboration doesn't scale to a struct this wide. See
+-- doc/version-info-struct.md for the full story and where the actual
+-- field-count wall is (not yet bisected). `age`/`libz_version`/every
+-- field added after `CURLVERSION_FIRST`, and the `protocols`/
+-- `feature_names` string arrays remain unbound.
+%cg rc2 externStruct=curl_version_info_data
 
-%foreign "RC2:idris2curl_version_info_version_num,libcurl,idris2curl_compat.h"
-prim__curlVersionInfoVersionNum : PrimIO Int
+VersionInfoPtr : Type
+VersionInfoPtr = Struct "curl_version_info_data"
+    [ ("version", String)
+    , ("version_num", Int)
+    , ("host", String)
+    , ("features", Int)
+    , ("ssl_version", AnyPtr)
+    ]
 
-%foreign "RC2:idris2curl_version_info_host,libcurl,idris2curl_compat.h"
-prim__curlVersionInfoHost : PrimIO String
-
-%foreign "RC2:idris2curl_version_info_features,libcurl,idris2curl_compat.h"
-prim__curlVersionInfoFeatures : PrimIO Int
-
--- Unlike prim__curlVersionInfoVersion/Host above, this returns a raw
--- AnyPtr rather than a String directly -- ssl_version genuinely can be
--- NULL (see idris2curl_version_info_ssl_version's own doc comment,
--- idris2curl_compat.h), so curlVersionInfoSslVersion below reads it
--- through Data.String.FFI.ptrToString to preserve that distinction.
-%foreign "RC2:idris2curl_version_info_ssl_version,libcurl,idris2curl_compat.h"
-prim__curlVersionInfoSslVersion : PrimIO AnyPtr
+%foreign "C:curl_version_info,libcurl,curl/curl.h"
+prim__curlVersionInfo : Int -> PrimIO VersionInfoPtr
 
 %foreign "C:curl_url,libcurl,curl/curl.h"
 prim__curlUrl : PrimIO AnyPtr
@@ -260,7 +274,7 @@ prim__curlShareCleanup : AnyPtr -> PrimIO Int
 -- trouble) every argument here is a plain input value libcurl reads,
 -- never a pointer libcurl writes through -- the same shape
 -- curl_easy_setopt's own three overloads already bind directly and
--- run correctly on all three backends. Only CURLSHOPT_SHARE/
+-- run correctly on both backends. Only CURLSHOPT_SHARE/
 -- CURLSHOPT_UNSHARE (an int curl_lock_data value) are bound;
 -- CURLSHOPT_LOCKFUNC/CURLSHOPT_UNLOCKFUNC/CURLSHOPT_USERDATA need a
 -- callback, not bound (see TODO.md).
@@ -333,9 +347,11 @@ prim__curlEasyHeader : AnyPtr -> String -> Int -> Int -> PrimIO AnyPtr
 -- curl_easy_nextheader() itself takes only plain input
 -- arguments/returns a pointer directly (no output-pointer trouble),
 -- so -- unlike curl_easy_header just above -- this binds directly on
--- all three backends. Reading the curl_header* it returns still needs
+-- both backends. Reading the curl_header* it returns still needs
 -- idris2curl_header_name/value below (rc2-only, same struct-field
--- reasoning as curl_version_info/CURLMsg).
+-- reasoning as CURLMsg -- see idris2curl_compat.h's own
+-- idris2curl_header_name/value comment for why curl_header itself
+-- isn't bound via Struct/getField like curl_version_info_data now is).
 %foreign "C:curl_easy_nextheader,libcurl,curl/curl.h"
 prim__curlEasyNextheader : AnyPtr -> Int -> Int -> AnyPtr -> PrimIO AnyPtr
 
@@ -512,38 +528,40 @@ export
 curlVersion : HasIO io => io String
 curlVersion = primIO prim__curlVersion
 
-||| rc2-only, no Chez binding -- see `prim__curlVersionInfoVersion`'s
-||| own doc comment.
-export
-curlVersionInfoVersion : HasIO io => io String
-curlVersionInfoVersion = primIO prim__curlVersionInfoVersion
+||| `curl_version_info_data`, field-for-field -- see
+||| `VersionInfoPtr`'s own doc comment for which fields are bound and
+||| why.
+public export
+record VersionInfo where
+  constructor MkVersionInfo
+  version    : String
+  versionNum : Int
+  host       : String
+  features   : Int
+  sslVersion : Maybe String
 
-||| rc2-only, same as `curlVersionInfoVersion`.
-export
-curlVersionInfoVersionNum : HasIO io => io Int
-curlVersionInfoVersionNum = primIO prim__curlVersionInfoVersionNum
+-- CURLVERSION_NOW == CURLVERSION_TWELFTH, curl/curl.h's own 0-based
+-- CURLversion ordinal as of libcurl 8.8.0. Passed explicitly rather
+-- than resolving a same-named C macro, since %foreign has no access
+-- to preprocessor macros at all (only real declarations). Every field
+-- VersionInfoPtr actually binds has existed since CURLVERSION_FIRST
+-- (libcurl 7.10), so unlike a hypothetically wider binding, this
+-- doesn't need to guard against an older running libcurl having a
+-- smaller struct than curl/curl.h itself declares.
+curlversionNow : Int
+curlversionNow = 11
 
-||| rc2-only, same as `curlVersionInfoVersion`.
+||| rc2-only (`VersionInfoPtr`'s own doc comment).
 export
-curlVersionInfoHost : HasIO io => io String
-curlVersionInfoHost = primIO prim__curlVersionInfoHost
-
-||| rc2-only, same as `curlVersionInfoVersion`. See
-||| curl/curl.h's own `CURL_VERSION_*` bit flags (`CURL_VERSION_SSL`,
-||| `CURL_VERSION_HTTP2`, ...) to test against the result.
-export
-curlVersionInfoFeatures : HasIO io => io Int
-curlVersionInfoFeatures = primIO prim__curlVersionInfoFeatures
-
-||| rc2-only, same as `curlVersionInfoVersion`. `Nothing` when
-||| libcurl was built without SSL support -- a genuine, documented
-||| `NULL` (`curl_version_info(3)`), not collapsed away like
-||| `curlVersionInfoVersion`/`Host` above.
-export
-curlVersionInfoSslVersion : HasIO io => io (Maybe String)
-curlVersionInfoSslVersion = do
-    raw <- primIO prim__curlVersionInfoSslVersion
-    pure (ptrToString raw)
+curlVersionInfo : HasIO io => io VersionInfo
+curlVersionInfo = do
+    v <- primIO (prim__curlVersionInfo curlversionNow)
+    let version    = getField v "version"
+        versionNum = getField v "version_num"
+        host       = getField v "host"
+        features   = getField v "features"
+        sslVersion = ptrToString (getField v "ssl_version")
+    pure $ MkVersionInfo version versionNum host features sslVersion
 
 ||| `Nothing` on the same allocation-failure contract as
 ||| `curlEasyInit` (`curl_url(3)`).

@@ -4,7 +4,7 @@ module Main
 -- This module was licensed by BSD3.
 
 -- Exercises curl_easy_pause/curl_easy_upkeep -- both plain input-only
--- bindings, fully bound on all three backends.
+-- bindings, fully bound on both backends.
 --
 -- curl_easy_pause(3) is only meaningful called from inside a transfer
 -- callback (e.g. CURLOPT_WRITEFUNCTION returning

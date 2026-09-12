@@ -1,105 +1,119 @@
 # Binding `curl_version_info`: a real C struct, rc2-only
 
 `curl_version_info(CURLVERSION_NOW)` returns
-`curl_version_info_data *` -- a real C struct with ~20 fields
+`curl_version_info_data *` -- a real C struct with ~25 fields
 (`curl/curl.h`: version strings, a numeric version, a feature bitmask,
 SSL/libz/etc. version strings, `NULL`-terminated string arrays for
 supported protocols/feature names, ...), not a scalar `%foreign` can
 hand back directly.
 
-## Why not `System.FFI`'s `Struct`/`getField`
+## `Struct`/`getField`, via `%cg rc2 externStruct=curl_version_info_data`
 
 Idris2 has a purpose-built mechanism for exactly this: `System.FFI`'s
-`Struct`/`getField`/`setField`, and rc2 now implements it
-(`rc2/doc/c-struct-support.md`). Tried directly against
-`curl_version_info_data` specifically and rejected, for a reason
-unrelated to backend coverage: **rc2 unconditionally emits its own
-`typedef struct { ... } name;` for every struct name mentioned in a
-`Struct "name" [...]`** (`c-struct-support.md`'s own Part C). For a
-struct a *library header already defines* -- `curl_version_info_data`
-is `typedef`'d by `curl/curl.h`, included via this same `%foreign`
-declaration's own header field -- that collides outright:
+`Struct`/`getField`/`setField`, and rc2 implements it
+(`idris2-rc-cg`'s `rc2/doc/c-struct-support.md`). This module's own
+`VersionInfoPtr` (`Network.Curl.Raw`) uses it directly:
+
+```idris2
+%cg rc2 externStruct=curl_version_info_data
+
+VersionInfoPtr : Type
+VersionInfoPtr = Struct "curl_version_info_data"
+    [ ("version", String), ("version_num", Int), ... ]
+```
+
+## Why this needed a dedicated rc2 directive first
+
+Tried directly against `curl_version_info_data` once already, and
+rejected at the time, for a reason unrelated to backend coverage:
+**rc2 used to unconditionally emit its own `typedef struct { ... }
+name;` for every struct name mentioned in a `Struct "name" [...]`**
+(`c-struct-support.md`'s own Part C). For a struct a *library header
+already defines* -- `curl_version_info_data` is `typedef`'d by
+`curl/curl.h`, included via this same `%foreign` declaration's own
+header field -- that collided outright:
 ```
 error: conflicting types for 'curl_version_info_data'
 ```
-confirmed directly by compiling exactly that (a
-`Struct "curl_version_info_data" [("version", String), ...]`
-`%foreign` binding, real `curl/curl.h` included). A differently-named
-"view" struct sidesteps the redefinition error, but only by hand-
-replicating the real struct's own field layout (order *and* exact
-width -- `curl_version_info_data`'s own leading `CURLversion age` is a
-4-byte C enum, not `Int`'s 64-bit default on rc2; get one field's width
-wrong and every later field's offset is silently off), for a struct
-this repo doesn't own and libcurl could reorder or extend release to
-release -- strictly more fragile than the one-shim-per-field approach
-below, which lets the real `curl/curl.h` struct definition (via a real
-C dereference, `%include`d) compute every offset instead of an Idris
-programmer replicating them by hand. `getField`/`setField` remain the
-right tool for a struct *this program defines itself* under a name
-that appears nowhere else (`rc2/tests/Test24CStructSupport.idr`'s own
-`test_point`) -- not for reflecting into an existing library's struct.
+confirmed directly at the time by compiling exactly that. The fix
+landed in `idris2-rc-cg` itself, not here: `%cg rc2
+externStruct=<name>` (repeatable, `rc2/doc/directives.md` section 5)
+tells `Emit.idr`'s `header` to skip emitting its own typedef for a
+listed name, while leaving `getField`/`setField`'s own field-type
+table untouched -- `curl_version_info_data`'s real definition, already
+visible via `curl/curl.h`'s own `#include`, is what the generated
+`((curl_version_info_data*)ptr)->field` expression actually compiles
+against.
 
-## The fix: one shim per field, rc2-only
+One consequence worth calling out: with `externStruct`, the field
+*order* in `VersionInfoPtr`'s own list is no longer load-bearing for
+correctness (unlike a struct this repo would define and lay out
+itself, `c-struct-support.md`'s own `Test24CStructSupport`) -- the
+real `curl/curl.h` struct's own field order/width governs the actual
+`->field` member access; the Idris list only has to name a field
+correctly and give a C-type-compatible `CFType` for the value that
+comes back. The version of this doc written *before* `externStruct`
+existed worried about exactly this (hand-replicating field
+order/width for a differently-named "view" struct) -- moot now, since
+this binding never declares its own competing layout at all.
 
-`csrc/idris2curl_compat.h` holds one `static inline` shim per field
-actually used, each calling `curl_version_info(CURLVERSION_NOW)`
-itself and reading straight off the result:
-```c
-static inline char *idris2curl_version_info_version(void) {
-    const char *v = curl_version_info(CURLVERSION_NOW)->version;
-    return (char *) (v == NULL ? "" : v);
-}
-```
-`curl_version_info(CURLVERSION_NOW)` itself returns a pointer to a
-static, library-owned struct (never freed, never reallocated) -- so
-calling it once per shim, per field read, is cheap and never
-invalidates any earlier shim's own return value; no need to cache it
-on the Idris side.
+## `getField` doesn't scale to a wide struct -- confirmed by an actual OOM crash
 
-Same "static inline, only a real symbol under static linking" argument
-as `doc/const-char-ffi.md`/`doc/variadic-getinfo.md` applies here too:
-no plain `"C:..."` target exists for any of these, so there's no Chez
-binding at all -- confirmed the same way (type-checks fine, fails
-cleanly with "was not accepted by any backend" only at
-`examples/VersionInfo.idr`'s own actual call sites under Chez), the
-same gap `Struct`/`getField` would have hit for an unrelated reason
-(see above) even if this were rewritten to use it.
+Binding every non-array field (~24 of them) was tried first, replacing
+`VersionInfoPtr`'s own 5-entry list with the full field list and
+`curlVersionInfo` with one `getField`/`ptrToString` pair per field.
+Compiling that (plain `idris2 --build package.ipkg`, Chez target --
+`getField`'s own elaboration doesn't depend on the codegen backend)
+**crashed the compiler itself**: `out of memory`, SIGABRT, confirmed
+with a `ulimit -v 6000000` (6GB) cap in place first specifically to
+stop it from taking down the whole machine again after an unbounded
+first attempt already had. Not a slow-but-eventually-fine build --
+genuinely unbounded memory growth during elaboration. Root cause not
+pinned down further (not yet bisected to find the actual field-count
+threshold) -- upstream `System.FFI`'s own `getField` implementation
+almost certainly doesn't scale well with the `Struct`'s own field-list
+length, given `curl_version_info_data`'s 5-field predecessor binding
+compiled fine and every other `Struct` in this codebase or rc2's own
+test suite (`Test24CStructSupport`, 2 fields) is far narrower.
 
-## Fields bound so far
+**Consequence**: `VersionInfoPtr` only binds the same 5 fields the
+pre-`Struct` shim design already had --
+`version`/`version_num`/`host`/`features`/`ssl_version` -- not the
+full struct. `age` and every field added after `CURLVERSION_FIRST`
+(`libz_version`, `ares`, `libidn`, `brotli_*`, `nghttp2_*`,
+`quic_version`, `cainfo`/`capath`, `zstd_*`, `hyper_version`,
+`gsasl_version`, `rtmp_version`) are NOT bound, on top of
+`protocols`/`feature_names` (`const char * const *`, `NULL`-terminated
+arrays -- no Idris-side array-of-`CFString` binding exists either way)
+and `ssl_version_num` (`curl/curl.h`'s own comment: "not used anymore,
+always 0"). Adding any one of the unbound fields back is cheap
+mechanically (one more `Struct` list entry, one more `getField` call --
+no C code) but should be done a field or two at a time with an actual
+build in between, not in one large batch, until the real threshold is
+known.
 
-`version` (`const char *`), `version_num` (`unsigned int`), `host`
-(`const char *`), `features` (`int` bitmask -- test against
-`curl/curl.h`'s own `CURL_VERSION_*` bit flags), `ssl_version`
-(`const char *`). Not bound: `libz_version`, the `protocols`/
-`feature_names` `NULL`-terminated string arrays (no Idris-side
-array-of-`CFString` binding exists yet, and would need its own design
--- a `List String` return isn't something `%foreign` can express
-directly either), and every field added after `CURLVERSION_FIRST`
-(`ares`, `libidn`, `libssh_version`, `brotli_version`, ...) -- add a
-shim + `Network.Curl.Raw` binding pair for any of these as a concrete
-need comes up, same as `Network.Curl.Types`'s own `curlinfo_*`/
-`curlopt_*` constants.
+`version`/`host` are the only two fields libcurl always sets
+(`curl_version_info(3)`), so they're plain `String`. `ssl_version` is
+typed `AnyPtr` in `VersionInfoPtr` and read through
+`Data.String.FFI.ptrToString` in `curlVersionInfo` (`Network.Curl.Raw`)
+rather than collapsed to `""` -- it's `NULL` whenever libcurl was built
+without SSL support, and collapsing that to `""` would silently
+conflate "no SSL backend" with a (never actually occurring) empty
+version string. The same reasoning would apply to any future `const
+char *` field added back in.
 
-## String fields that can genuinely be `NULL`: raw pointer + `ptrToString`, not `""`-substitution
+## `curl_header` (curl/header.h): same typedef collision, not switched yet
 
-`version`/`host` above always substitute `""` for a `NULL` field at the
-C-shim level -- fine, since libcurl always sets both. `ssl_version`
-doesn't hold that guarantee: per `curl_version_info(3)`, it's `NULL`
-whenever libcurl was built without SSL support, not merely an empty
-string. Substituting `""` there would silently conflate "no SSL
-backend" with a name that's empty (never actually happens, but the
-distinction is the whole point of the field). So
-`idris2curl_version_info_ssl_version` hands back the raw pointer
-unchanged instead (`csrc/idris2curl_compat.h`), and
-`Network.Curl.Raw`'s own `curlVersionInfoSslVersion` reads it through
-`Data.String.FFI.ptrToString` (`rc2base`'s cross-backend, non-owning
-`AnyPtr -> Maybe String` read -- see that module's own doc comment,
-and `curlUrlGet`/`curlSlistToList` for the same tool used elsewhere),
-returning `Maybe String` rather than `String`.
+`curl_easy_header`/`curl_easy_nextheader`'s own `struct curl_header`
+result is still read via a one-shim-per-field pair
+(`idris2curl_header_name`/`_value`, `csrc/idris2curl_compat.h`), the
+same design this struct used before. `%cg rc2
+externStruct=curl_header` would work the same way, but hasn't been
+done -- see `TODO.md`'s own entry for why (smaller payoff: only
+`name`/`value` are exposed today).
 
-This is the house pattern for any *future* struct-field string read
-too: prefer a raw-pointer shim + `ptrToString` on the Idris side over
-`""`-substitution in C, whenever the field's own `NULL` genuinely means
-something the shim shouldn't discard -- reach for the `""`-substitution
-shortcut only when the field is documented as always-set (`version`/
-`host` here), same judgement call already made for both of them.
+## `CURLMsg`: still not a candidate
+
+`doc/multi-interface.md` covers this in full: `CURLMsg`'s own `data`
+field is a real C `union`, which `getField` has no `CFType` for at
+all -- a different, structural problem `externStruct` doesn't touch.

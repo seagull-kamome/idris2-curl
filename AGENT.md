@@ -52,9 +52,12 @@ C codegen backend, not just the default Chez backend.
   function needs a `csrc/` shim and two separate `%foreign` targets,
   one per backend; `variadic-getinfo.md` for why `curl_easy_getinfo`/
   `curl_url_get` have no Chez binding at all; `version-info-struct.md`
-  for why `curl_version_info` (a real C struct, not a scalar) is bound
-  via per-field `csrc/` shims rather than `System.FFI`'s own
-  `Struct`/`getField`; `multi-interface.md` for the same output-pointer/
+  for how `curl_version_info_data`/`curl_slist`/`curl_header` (real C
+  structs, not scalars) are each bound via `System.FFI`'s own
+  `Struct`/`getField` plus rc2's own `%cg rc2 externStruct=<name>`
+  directive rather than a per-field `csrc/` shim, and why `CURLMsg`
+  alone can't be (a real C `union` field); `multi-interface.md` for the
+  output-pointer/
   no-Chez-binding reasoning applied to `curl_multi_*`;
   `int-width-pitfall.md` for why a negative/sentinel `Int` `%foreign`
   argument (e.g. `CURL_ZERO_TERMINATED`) isn't safe on both this

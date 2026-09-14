@@ -65,31 +65,19 @@ static inline int64_t idris2curl_getinfo_offt(CURL *h, int info) {
 
 /* CURLINFO_SLIST-tagged infos (e.g. CURLINFO_COOKIELIST) write
  * through a `struct curl_slist **` -- handed back as an opaque
- * pointer, same "collapse to a scalar return, read fields via
- * idris2curl_slist_data/_next below" idea as idris2curl_multi_info_read
- * above. Per curl_easy_getinfo(3), the caller owns the returned list
- * and must release it with curl_slist_free_all() once done -- unlike
- * every other getinfo tag here, whose value is owned internally by
- * libcurl and never freed by the caller. */
+ * pointer, still collapsed to a scalar return the same way every
+ * other idris2curl_getinfo_* shim above does. Per curl_easy_getinfo(3),
+ * the caller owns the returned list and must release it with
+ * curl_slist_free_all() once done -- unlike every other getinfo tag
+ * here, whose value is owned internally by libcurl and never freed by
+ * the caller. Reading the list's own `data`/`next` fields back needs
+ * no shim of its own -- Network.Curl.Raw's own SlistPtr reads
+ * `struct curl_slist` (curl/curl.h's own typedef) directly via
+ * System.FFI's Struct/getField, see doc/version-info-struct.md. */
 static inline void *idris2curl_getinfo_slist(CURL *h, int info) {
     struct curl_slist *v = NULL;
     curl_easy_getinfo(h, (CURLINFO) info, &v);
     return (void *) v;
-}
-
-/* struct curl_slist's own two fields, one shim each, same "one shim
- * per field" idea as idris2curl_multimsg_ below. `data` is read
- * through Data.String.FFI's own `ptrToString`
- * on the Idris side -- a bare copy, no curl_free/GC registration,
- * since ownership of every node's own `data` belongs to the list as a
- * whole (released in one shot by curl_slist_free_all(), never per
- * node). */
-static inline char *idris2curl_slist_data(void *node) {
-    return node == NULL ? NULL : ((struct curl_slist *) node)->data;
-}
-
-static inline void *idris2curl_slist_next(void *node) {
-    return node == NULL ? NULL : (void *) ((struct curl_slist *) node)->next;
 }
 
 /* CURLINFO_SOCKET-tagged infos (e.g. CURLINFO_ACTIVESOCKET) write
@@ -221,22 +209,12 @@ static inline void *idris2curl_easy_header(CURL *h, const char *name, unsigned i
     return (rc == CURLHE_OK) ? (void *) hout : NULL;
 }
 
-/* curl_header's own fields, read the same "one shim per field" way
- * idris2curl_multimsg_ above does, rather than System.FFI's own
- * Struct/getField -- `%cg rc2 externStruct=curl_header` would sidestep
- * the same typedef collision doc/version-info-struct.md documents for
- * curl_version_info_data (curl/header.h already typedefs
- * `curl_header` too), not attempted here yet -- see TODO.md.
- * `amount`/`index` (both `size_t`) aren't exposed -- no concrete need
- * yet to distinguish "which occurrence of a repeated header" beyond
- * always reading the first (see idris2curl_easy_header's own
- * `nameindex = 0` above). */
-static inline char *idris2curl_header_name(void *h) {
-    return h == NULL ? (char *) "" : ((struct curl_header *) h)->name;
-}
-
-static inline char *idris2curl_header_value(void *h) {
-    return h == NULL ? (char *) "" : ((struct curl_header *) h)->value;
-}
+/* `nameindex` (which same-named header to read, when more than one
+ * exists) is hard-coded to `0` (the first/only one) above -- no
+ * concrete need yet to read a specific later occurrence. Reading
+ * `struct curl_header`'s own fields back needs no shim of its own --
+ * Network.Curl.Raw's own HeaderPtr reads `struct curl_header`
+ * (curl/header.h's own typedef) directly via System.FFI's
+ * Struct/getField, see doc/version-info-struct.md. */
 
 #endif

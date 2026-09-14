@@ -102,15 +102,100 @@ conflate "no SSL backend" with a (never actually occurring) empty
 version string. The same reasoning would apply to any future `const
 char *` field added back in.
 
-## `curl_header` (curl/header.h): same typedef collision, not switched yet
+## `curl_header` (curl/header.h): converted, full 6-field list, on purpose
 
 `curl_easy_header`/`curl_easy_nextheader`'s own `struct curl_header`
-result is still read via a one-shim-per-field pair
+result used to be read via a one-shim-per-field pair
 (`idris2curl_header_name`/`_value`, `csrc/idris2curl_compat.h`), the
-same design this struct used before. `%cg rc2
-externStruct=curl_header` would work the same way, but hasn't been
-done -- see `TODO.md`'s own entry for why (smaller payoff: only
-`name`/`value` are exposed today).
+same design `curl_version_info_data` used before. Switched to `%cg rc2
+externStruct=curl_header` + `Struct`/`getField` (`Network.Curl.Raw`'s
+own `HeaderPtr`), same mechanism as `VersionInfoPtr`/`SlistPtr` above.
+
+Unlike `curl_slist`, this repo only ever *reads* two of the real
+struct's six fields (`name`/`value` -- `curl/header.h`: `{ char *name;
+char *value; size_t amount; size_t index; unsigned int origin; void
+*anchor; }`). Binding only those two in `HeaderPtr`'s own field list
+would repeat `VersionInfoPtr`'s exact unsafe-on-Chez situation (a
+from-scratch Chez `define-ftype` computed from a partial field list
+diverges from the real struct's own offsets past the point a field was
+skipped) -- and unlike `curl_slist` (whose only reader,
+`prim__curlEasyGetinfoSlist`, stays `"RC2:..."`-only, so a Chez build
+can never actually reach the unsafe path), `curl_easy_nextheader` has
+a real `"C:..."` target reachable from Chez today (only
+`curl_easy_header` itself is rc2-only, for the unrelated output-
+pointer-collapse reason `doc/variadic-getinfo.md` covers). So
+`HeaderPtr` lists all six real fields, in the real struct's own
+order and with width-correct types (`Bits64` for the two `size_t`
+fields, `Bits32` for the `unsigned int` one -- confirmed against
+`idris2-rc-cg`'s own `cTypeOfCFType`, which maps those to `uint64_t`/
+`uint32_t`) even though `amount`/`index`/`origin`/`anchor` are never
+read by `getField` anywhere -- they exist purely to keep a
+from-scratch Chez layout correct, same reasoning as `curl_slist`'s own
+full-field-list section above, just for real this time since the
+reachability gap is real here. `anchor` in particular is `curl/header.h`'s
+own "handle privately used by libcurl" field -- never meant to be read
+by a caller at all, bound here for layout only.
+
+Considered and rejected: inserting a separate no-op dummy `%foreign`
+declaration purely to keep `curl_header` "registered" regardless of
+which real producer a future caller happens to use, addressing the
+different (reachability, not layout) gotcha `SlistPtr`'s own doc
+comment describes. Unnecessary here -- both real producers
+(`prim__curlEasyHeader` and `prim__curlEasyNextheader`) are now typed
+`HeaderPtr` themselves, so each one independently registers
+`curl_header` with rc2 whenever *it* is reachable, without relying on
+the other. Since a caller cannot read a `curl_header`'s fields at all
+without first obtaining one from one of these two functions, real
+usage can never reach `getField` without also making at least one of
+them reachable -- a dummy anchor would only earn its keep in a design
+where the struct-producing call and the struct-reading call could be
+reached independently, which isn't the shape of this API.
+
+## `curl_slist`: converted, and the one case where Chez isn't ruled out
+
+`struct curl_slist` (`curl/curl.h`: `{ char *data; struct curl_slist
+*next; }`) used to read its two fields via `idris2curl_slist_data`/
+`_next` (`csrc/idris2curl_compat.h`), the same one-shim-per-field
+design `curl_version_info_data` used before. Switched to `%cg rc2
+externStruct=curl_slist` + `Struct`/`getField` (`Network.Curl.Raw`'s
+own `SlistPtr`) instead, same mechanism as `VersionInfoPtr` above.
+
+This case differs from `VersionInfoPtr` in the one respect that
+mattered for the "Chez's own `Struct`/`getField` computes its own
+`define-ftype` from the field list, not the real header's own layout"
+caveat above: `SlistPtr`'s field list is the *entire* real struct, in
+its *real declaration order* (`data` then `next`), not a 5-of-25
+subset. A Chez-synthesized `define-ftype` from that exact list is
+therefore byte-for-byte identical to the real `struct curl_slist`
+layout -- no skipped/reordered field to make its offsets diverge from
+libcurl's own. Not actually exercised on Chez either way yet, though:
+`curlSlistToList` (the only reader of these two fields) was already
+unreachable from Chez before this change, since `prim__curlSlistData`/
+`_next`'s old `%foreign` declarations had `"RC2:..."` targets only, no
+Chez fallback -- this conversion doesn't change that, `SlistPtr`
+itself is a plain type-level `Struct` alias, not backend-gated. Should
+someone bind a Chez-reachable use of `curlSlistToList` later, verify
+this reasoning against an actual run before trusting it, same as
+everything else in this doc.
+
+A real gotcha confirmed while doing this conversion, worth calling out
+separately: rc2's `RStructGet` codegen only learns a struct's layout
+from an actual `%foreign` declaration typed with it, and only if that
+declaration stays *reachable* in the specific compiled program after
+dead-code elimination -- not merely declared at module scope.
+`SlistPtr` itself has no `%foreign` of its own; `prim__curlEasyGetinfoSlist`
+(retyped to return `SlistPtr`, then cast back to `AnyPtr` in its own
+`curlEasyGetinfoSlist` wrapper, purely to be that registration point)
+is the only place in `Network.Curl.Raw` that does. A throwaway test
+program that only called `curlSlistAppend`/`curlSlistToList` -- never
+`curlEasyGetinfoSlist` -- failed with `INTERNAL ERROR: [rc2]
+RStructGet: unknown struct curl_slist` even with `SlistPtr` declared
+right there in the same module; adding one real call to
+`curlEasyGetinfoSlist` into that same program fixed it. Every real
+caller of `curlSlistToList` in this repo already goes through
+`curlEasyGetinfoSlist` first (`GetInfo.idr`'s own COOKIELIST read), so
+this doesn't bite today -- but keep it in mind if `curl_slist` reading
+is ever reached some other way.
 
 ## `CURLMsg`: still not a candidate
 

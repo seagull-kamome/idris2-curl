@@ -102,21 +102,50 @@ prim__curlEasyGetinfoDouble : AnyPtr -> Int -> PrimIO Double
 %foreign "RC2:idris2curl_getinfo_offt,libcurl,idris2curl_compat.h"
 prim__curlEasyGetinfoOfft : AnyPtr -> Int -> PrimIO Int64
 
+-- `struct curl_slist` itself (curl/curl.h: `{ char *data; struct
+-- curl_slist *next; }`) -- bound via `Struct`/`getField` (same `%cg
+-- rc2 externStruct=<name>` mechanism `VersionInfoPtr` below uses),
+-- rather than a shim per field. Unlike `curl_version_info_data`, both
+-- of the real struct's fields are bound here, in the real struct's
+-- own declaration order, so there's no partial-field-list offset
+-- mismatch to worry about -- see doc/version-info-struct.md's own
+-- "`curl_slist`" section.
+--
+-- Must be declared before prim__curlEasyGetinfoSlist below, and that
+-- declaration's own use of SlistPtr must stay *reachable* in whatever
+-- program actually gets compiled -- rc2's `RStructGet` codegen only
+-- knows a struct name once Emit.idr has walked an actual `%foreign`
+-- declaration typed with it, and that walk only reaches definitions
+-- the compiled program's own call graph still includes after dead-
+-- code elimination. Confirmed the hard way: a scratch program that
+-- built and read back a `curl_slist` purely through
+-- curlSlistAppend/curlSlistToList, never calling
+-- curlEasyGetinfoSlist at all, failed with "INTERNAL ERROR: [rc2]
+-- RStructGet: unknown struct curl_slist" even though SlistPtr is
+-- declared right here at module scope -- only adding a real call to
+-- curlEasyGetinfoSlist somewhere in that same program fixed it. Every
+-- real caller of curlSlistToList in this repo already goes through
+-- curlEasyGetinfoSlist first (GetInfo.idr's own COOKIELIST read), so
+-- this doesn't bite today -- but a hypothetical future program that
+-- only ever builds slists (curlSlistAppend) and never reads one back
+-- via curl_easy_getinfo would hit this. Nothing else in this module
+-- mentions SlistPtr in a %foreign signature.
+%cg rc2 externStruct=curl_slist
+
+SlistPtr : Type
+SlistPtr = Struct "curl_slist" [ ("data", AnyPtr), ("next", AnyPtr) ]
+
 -- Opaque `struct curl_slist *` handle -- read via curlSlistToList
 -- below, released via curlSlistFreeAll once done (see
 -- idris2curl_getinfo_slist's own doc comment, idris2curl_compat.h, for
 -- why this tag's value is caller-owned unlike every other getinfo tag
--- here).
+-- here). Typed `SlistPtr`, not `AnyPtr`, purely so this declaration is
+-- the one that registers `curl_slist` with rc2 (see `SlistPtr`'s own
+-- doc comment above) -- `curlEasyGetinfoSlist` below casts straight
+-- back to `AnyPtr`, the type every other slist-handling function in
+-- this module still uses.
 %foreign "RC2:idris2curl_getinfo_slist,libcurl,idris2curl_compat.h"
-prim__curlEasyGetinfoSlist : AnyPtr -> Int -> PrimIO AnyPtr
-
--- `struct curl_slist`'s own two fields, one shim each, same "one shim
--- per field" idea as prim__curlMultimsg* below.
-%foreign "RC2:idris2curl_slist_data,libcurl,idris2curl_compat.h"
-prim__curlSlistData : AnyPtr -> PrimIO AnyPtr
-
-%foreign "RC2:idris2curl_slist_next,libcurl,idris2curl_compat.h"
-prim__curlSlistNext : AnyPtr -> PrimIO AnyPtr
+prim__curlEasyGetinfoSlist : AnyPtr -> Int -> PrimIO SlistPtr
 
 -- `curl_socket_t` is a plain C `int` on every non-Windows platform
 -- (curl/curl.h's own typedef), an exact fit for Idris2's `Int`.
@@ -336,30 +365,59 @@ prim__curlEasyPause : AnyPtr -> Int -> PrimIO Int
 %foreign "C:curl_easy_upkeep,libcurl,curl/curl.h"
 prim__curlEasyUpkeep : AnyPtr -> PrimIO Int
 
+-- `struct curl_header` itself (curl/header.h: `{ char *name; char
+-- *value; size_t amount; size_t index; unsigned int origin; void
+-- *anchor; }`) -- bound via `Struct`/`getField` (same `%cg rc2
+-- externStruct=<name>` mechanism `SlistPtr`/`VersionInfoPtr` use)
+-- rather than a shim per field. All six of the real struct's fields
+-- are listed here, in the real struct's own declaration order, even
+-- though only `name`/`value` are ever read via `getField` below --
+-- `amount`/`index`/`origin`/`anchor` exist purely so a from-scratch
+-- Chez `define-ftype` computed from this list (see `SlistPtr`'s own
+-- doc comment, and doc/version-info-struct.md's own caveat on
+-- `VersionInfoPtr`, for why a *partial* field list is unsafe there)
+-- lands on the real struct's actual byte layout rather than a wrong
+-- one -- `curl_easy_nextheader` (below) has a real Chez `%foreign`
+-- target, unlike `curl_easy_header`, so this one isn't reliably rc2-
+-- only by construction the way `SlistPtr` currently is. `anchor` --
+-- `void *`, curl/header.h's own comment on the field itself: "handle
+-- privately used by libcurl" -- is listed for the same layout-only
+-- reason, never read.
+%cg rc2 externStruct=curl_header
+
+HeaderPtr : Type
+HeaderPtr = Struct "curl_header"
+    [ ("name", String)
+    , ("value", String)
+    , ("amount", Bits64)
+    , ("index", Bits64)
+    , ("origin", Bits32)
+    , ("anchor", AnyPtr)
+    ]
+
 -- curl_easy_header()'s own last argument is a write-through output
 -- pointer -- see idris2curl_easy_header's own doc comment
 -- (idris2curl_compat.h) for why it's collapsed via a csrc/ shim,
 -- rc2-only, same reasoning as curl_easy_getinfo
--- (doc/variadic-getinfo.md).
+-- (doc/variadic-getinfo.md). Typed `HeaderPtr`, not `AnyPtr`, so this
+-- declaration registers `curl_header` with rc2 -- see `HeaderPtr`'s
+-- own doc comment above, and `SlistPtr`'s own doc comment for why a
+-- `%foreign` declaration has to actually stay *reachable*, not just
+-- exist somewhere in the module, to do that.
 %foreign "RC2:idris2curl_easy_header,libcurl,idris2curl_compat.h"
-prim__curlEasyHeader : AnyPtr -> String -> Int -> Int -> PrimIO AnyPtr
+prim__curlEasyHeader : AnyPtr -> String -> Int -> Int -> PrimIO HeaderPtr
 
 -- curl_easy_nextheader() itself takes only plain input
 -- arguments/returns a pointer directly (no output-pointer trouble),
 -- so -- unlike curl_easy_header just above -- this binds directly on
--- both backends. Reading the curl_header* it returns still needs
--- idris2curl_header_name/value below (rc2-only, same struct-field
--- reasoning as CURLMsg -- see idris2curl_compat.h's own
--- idris2curl_header_name/value comment for why curl_header itself
--- isn't bound via Struct/getField like curl_version_info_data now is).
+-- both backends. Also typed `HeaderPtr`, both as `prev` (curl_easy_
+-- nextheader's own real signature takes `struct curl_header *prev`)
+-- and as the return type -- independently sufficient to register
+-- curl_header with rc2 whenever this declaration alone is reachable
+-- (same reasoning as prim__curlEasyHeader above), not reliant on that
+-- other declaration also being reachable in the same program.
 %foreign "C:curl_easy_nextheader,libcurl,curl/curl.h"
-prim__curlEasyNextheader : AnyPtr -> Int -> Int -> AnyPtr -> PrimIO AnyPtr
-
-%foreign "RC2:idris2curl_header_name,libcurl,idris2curl_compat.h"
-prim__curlHeaderName : AnyPtr -> PrimIO String
-
-%foreign "RC2:idris2curl_header_value,libcurl,idris2curl_compat.h"
-prim__curlHeaderValue : AnyPtr -> PrimIO String
+prim__curlEasyNextheader : AnyPtr -> Int -> Int -> HeaderPtr -> PrimIO HeaderPtr
 
 ||| `CURL_GLOBAL_ALL`, per curl/curl.h.
 curlGlobalAll : Int
@@ -443,7 +501,7 @@ curlEasyGetinfoOfft h (MkCURLINFO i) = primIO (prim__curlEasyGetinfoOfft h i)
 ||| `idris2curl_getinfo_slist`'s own doc comment, idris2curl_compat.h).
 export
 curlEasyGetinfoSlist : HasIO io => AnyPtr -> CURLINFO -> io AnyPtr
-curlEasyGetinfoSlist h (MkCURLINFO i) = primIO (prim__curlEasyGetinfoSlist h i)
+curlEasyGetinfoSlist h (MkCURLINFO i) = believe_me <$> primIO (prim__curlEasyGetinfoSlist h i)
 
 export
 curlEasyGetinfoSocket : HasIO io => AnyPtr -> CURLINFO -> io Int
@@ -472,19 +530,23 @@ curlSlistFreeAll : HasIO io => AnyPtr -> io ()
 curlSlistFreeAll list = primIO (prim__curlSlistFreeAll list)
 
 ||| Copies each node's own `data` field into a fresh `List String` via
-||| `Data.String.FFI.ptrToString`'s bare copy -- see
-||| `idris2curl_slist_data`'s own doc comment (idris2curl_compat.h) for
-||| why no `curl_free`/GC registration happens per node here (ownership
-||| belongs to the list as a whole). Does not consume or free `list`
-||| itself -- release it with `curlSlistFreeAll` once done reading.
+||| `Data.String.FFI.ptrToString`'s bare copy -- no `curl_free`/GC
+||| registration happens per node here, since ownership of every
+||| node's own `data` belongs to the list as a whole. Does not consume
+||| or free `list` itself -- release it with `curlSlistFreeAll` once
+||| done reading. `believe_me`s `list` into `SlistPtr` to read its two
+||| fields via `getField` -- safe per `SlistPtr`'s own doc comment
+||| (same runtime representation, a raw pointer, as the `AnyPtr` this
+||| function's own signature keeps using throughout).
 export
 curlSlistToList : HasIO io => AnyPtr -> io (List String)
 curlSlistToList list =
     if prim__nullAnyPtr list /= 0
        then pure []
        else do
-           d <- primIO (prim__curlSlistData list)
-           n <- primIO (prim__curlSlistNext list)
+           let node = the SlistPtr (believe_me list)
+               d = getField node "data"
+               n = getField node "next"
            rest <- curlSlistToList n
            pure $ case ptrToString d of
                        Nothing => rest
@@ -791,12 +853,9 @@ export
 curlEasyHeader : HasIO io => AnyPtr -> (name : String) -> (origin : Int) -> (request : Int) -> io (Maybe (String, String))
 curlEasyHeader h name origin request = do
     hdr <- primIO (prim__curlEasyHeader h name origin request)
-    if prim__nullAnyPtr hdr /= 0
+    if prim__nullAnyPtr (believe_me hdr) /= 0
        then pure Nothing
-       else do
-         n <- primIO (prim__curlHeaderName hdr)
-         v <- primIO (prim__curlHeaderValue hdr)
-         pure $ Just (n, v)
+       else pure $ Just (getField hdr "name", getField hdr "value")
 
 ||| rc2-only, same as `curlEasyHeader`. `prev` -- `curlSlistEmpty`
 ||| to start iterating from the first header, or a previous call's own
@@ -808,13 +867,10 @@ curlEasyHeader h name origin request = do
 export
 curlEasyNextheader : HasIO io => AnyPtr -> (origin : Int) -> (request : Int) -> (prev : AnyPtr) -> io (Maybe (AnyPtr, String, String))
 curlEasyNextheader h origin request prev = do
-    hdr <- primIO (prim__curlEasyNextheader h origin request prev)
-    if prim__nullAnyPtr hdr /= 0
+    hdr <- primIO (prim__curlEasyNextheader h origin request (believe_me prev))
+    if prim__nullAnyPtr (believe_me hdr) /= 0
        then pure Nothing
-       else do
-         n <- primIO (prim__curlHeaderName hdr)
-         v <- primIO (prim__curlHeaderValue hdr)
-         pure $ Just (hdr, n, v)
+       else pure $ Just (believe_me hdr, getField hdr "name", getField hdr "value")
 
 ||| Performs the transfer with `CURLOPT_WRITEDATA` pointed at an
 ||| in-memory capture stream (`System.IO.MemStream`, `rc2base`), so the

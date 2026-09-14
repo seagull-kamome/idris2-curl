@@ -34,6 +34,10 @@ import Data.Buffer
 import Network.Curl.Raw
 import Network.Curl.Types
 
+------------------------------------------------------------------------
+-- Request/response types
+------------------------------------------------------------------------
+
 ||| HTTP method. `OTHER` covers anything not listed (WebDAV verbs,
 ||| ...) via `curlopt_CUSTOMREQUEST`.
 public export
@@ -51,25 +55,33 @@ record FetchRequest where
   headers : List (String, String)
   body    : Maybe String
 
+------------------------------------------------------------------------
+-- Request builders
+------------------------------------------------------------------------
+
+||| A bare request with an arbitrary method and no body -- add one
+||| with ordinary record update, e.g.
+||| `{ body := Just "..." } (request PUT url)`.
+export
+request : Method -> String -> {default [] headers : List (String, String)} -> {default Nothing body : Maybe String} -> FetchRequest
+request method url = MkFetchRequest url method headers body
+
 ||| `GET url`, no extra headers, no body.
 export
-get : String -> FetchRequest
-get url = MkFetchRequest url GET [] Nothing
+get : String -> {default [] headers : List (String, String)} -> FetchRequest
+get url = request GET url {headers}
 
 ||| `POST url` with `body` as the request body
 ||| (`curlopt_COPYPOSTFIELDS`, raw bytes -- not form-encoded). Set a
 ||| `Content-Type` header yourself if the server needs one, e.g.
 ||| `{ headers := [("Content-Type", "application/json")] } (post url body)`.
 export
-post : (url : String) -> (body : String) -> FetchRequest
-post url body = MkFetchRequest url POST [] (Just body)
+post : (url : String) -> {default [] headers : List (String, String)} -> (body : String) -> FetchRequest
+post url body = request POST url {headers} {body=Just body}
 
-||| A bare request with an arbitrary method and no body -- add one
-||| with ordinary record update, e.g.
-||| `{ body := Just "..." } (request PUT url)`.
-export
-request : Method -> String -> FetchRequest
-request method url = MkFetchRequest url method [] Nothing
+------------------------------------------------------------------------
+-- Response types & errors
+------------------------------------------------------------------------
 
 ||| `status`/`headers`/`body`, in that order matching `curl -i`'s own
 ||| output shape. `headers` -- every response header, oldest-declared-
@@ -108,6 +120,10 @@ Show FetchError where
   show (CurlError c msg) = "CurlError " ++ show c ++ " (" ++ msg ++ ")"
   show (SetupError msg)  = "SetupError " ++ msg
   show (HttpError s)     = "HttpError " ++ show s
+
+------------------------------------------------------------------------
+-- Internal helpers
+------------------------------------------------------------------------
 
 methodName : Method -> String
 methodName GET       = "GET"
@@ -197,6 +213,10 @@ collectHeaders h prev = do
         | Nothing => pure []
     rest <- collectHeaders h next
     pure ((name, value) :: rest)
+
+------------------------------------------------------------------------
+-- Public API
+------------------------------------------------------------------------
 
 ||| `fetch(req)` -- performs `req`, capturing the whole response body
 ||| as `String` (`curlEasyPerformToString`, one copy, NUL-terminated --

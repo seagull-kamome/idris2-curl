@@ -15,11 +15,19 @@ import System.IO.MemStream as MemStream
 
 import Network.Curl.Types
 
+------------------------------------------------------------------------
+-- Global init/cleanup
+------------------------------------------------------------------------
+
 %foreign "C:curl_global_init,libcurl,curl/curl.h"
 prim__curlGlobalInit : Int -> PrimIO Int
 
 %foreign "C:curl_global_cleanup,libcurl,curl/curl.h"
 prim__curlGlobalCleanup : PrimIO ()
+
+------------------------------------------------------------------------
+-- Easy handle lifecycle
+------------------------------------------------------------------------
 
 %foreign "C:curl_easy_init,libcurl,curl/curl.h"
 prim__curlEasyInit : PrimIO AnyPtr
@@ -51,11 +59,19 @@ prim__curlEasyDuphandle : AnyPtr -> PrimIO AnyPtr
 %foreign "C:curl_easy_reset,libcurl,curl/curl.h"
 prim__curlEasyReset : AnyPtr -> PrimIO ()
 
+------------------------------------------------------------------------
+-- curl_slist
+------------------------------------------------------------------------
+
 %foreign "C:curl_slist_append,libcurl,curl/curl.h"
 prim__curlSlistAppend : AnyPtr -> String -> PrimIO AnyPtr
 
 %foreign "C:curl_slist_free_all,libcurl,curl/curl.h"
 prim__curlSlistFreeAll : AnyPtr -> PrimIO ()
+
+------------------------------------------------------------------------
+-- Error strings
+------------------------------------------------------------------------
 
 -- curl_easy_strerror returns `const char *`; rc2's own %foreign
 -- lowering hardcodes CFString as non-const `char *`, which collides
@@ -75,6 +91,10 @@ prim__curlSlistFreeAll : AnyPtr -> PrimIO ()
 %foreign "C:curl_easy_strerror,libcurl,curl/curl.h"
          "RC2:idris2curl_easy_strerror,libcurl,idris2curl_compat.h"
 prim__curlEasyStrerror : Int -> PrimIO String
+
+------------------------------------------------------------------------
+-- curl_easy_getinfo
+------------------------------------------------------------------------
 
 -- curl_easy_getinfo() is variadic (the real C signature takes a
 -- write-through output pointer whose type depends on the CURLINFO);
@@ -152,6 +172,10 @@ prim__curlEasyGetinfoSlist : AnyPtr -> Int -> PrimIO SlistPtr
 %foreign "RC2:idris2curl_getinfo_socket,libcurl,idris2curl_compat.h"
 prim__curlEasyGetinfoSocket : AnyPtr -> Int -> PrimIO Int
 
+------------------------------------------------------------------------
+-- Escape/unescape
+------------------------------------------------------------------------
+
 -- curl_easy_escape/curl_easy_unescape/curl_free: all return/take a
 -- plain (non-const) `char *`/`void *`, so no const-cast shim is
 -- needed here unlike curl_easy_strerror above. The escaped/unescaped
@@ -179,6 +203,10 @@ prim__curlFree : AnyPtr -> PrimIO ()
 -- directly instead. See curlReadAndFree's own doc comment below.
 %foreign "C:idris2_getString,libidris2_support,idris_support.h"
 prim__curlGetStringGC : GCAnyPtr -> PrimIO String
+
+------------------------------------------------------------------------
+-- Version / curl_version_info
+------------------------------------------------------------------------
 
 %foreign "C:curl_version,libcurl,curl/curl.h"
 prim__curlVersion : PrimIO String
@@ -223,6 +251,10 @@ VersionInfoPtr = Struct "curl_version_info_data"
 %foreign "C:curl_version_info,libcurl,curl/curl.h"
 prim__curlVersionInfo : Int -> PrimIO VersionInfoPtr
 
+------------------------------------------------------------------------
+-- URL API
+------------------------------------------------------------------------
+
 %foreign "C:curl_url,libcurl,curl/curl.h"
 prim__curlUrl : PrimIO AnyPtr
 
@@ -248,6 +280,10 @@ prim__curlUrlGetRaw : AnyPtr -> Int -> Int -> PrimIO AnyPtr
 %foreign "C:curl_url_strerror,libcurl,curl/curl.h"
          "RC2:idris2curl_url_strerror,libcurl,idris2curl_compat.h"
 prim__curlUrlStrerror : Int -> PrimIO String
+
+------------------------------------------------------------------------
+-- Multi interface
+------------------------------------------------------------------------
 
 %foreign "C:curl_multi_init,libcurl,curl/multi.h"
 prim__curlMultiInit : PrimIO AnyPtr
@@ -292,6 +328,10 @@ prim__curlMultimsgEasyHandle : AnyPtr -> PrimIO AnyPtr
 %foreign "RC2:idris2curl_multimsg_result,libcurl,idris2curl_compat.h"
 prim__curlMultimsgResult : AnyPtr -> PrimIO Int
 
+------------------------------------------------------------------------
+-- Share interface
+------------------------------------------------------------------------
+
 %foreign "C:curl_share_init,libcurl,curl/curl.h"
 prim__curlShareInit : PrimIO AnyPtr
 
@@ -315,6 +355,10 @@ prim__curlShareSetoptInt : AnyPtr -> Int -> Int -> PrimIO Int
 %foreign "C:curl_share_strerror,libcurl,curl/curl.h"
          "RC2:idris2curl_share_strerror,libcurl,idris2curl_compat.h"
 prim__curlShareStrerror : Int -> PrimIO String
+
+------------------------------------------------------------------------
+-- Mime interface
+------------------------------------------------------------------------
 
 %foreign "C:curl_mime_init,libcurl,curl/curl.h"
 prim__curlMimeInit : AnyPtr -> PrimIO AnyPtr
@@ -359,11 +403,19 @@ prim__curlMimeFiledata : AnyPtr -> String -> PrimIO Int
 %foreign "C:curl_mime_headers,libcurl,curl/curl.h"
 prim__curlMimeHeaders : AnyPtr -> AnyPtr -> Int -> PrimIO Int
 
+------------------------------------------------------------------------
+-- Pause/upkeep
+------------------------------------------------------------------------
+
 %foreign "C:curl_easy_pause,libcurl,curl/curl.h"
 prim__curlEasyPause : AnyPtr -> Int -> PrimIO Int
 
 %foreign "C:curl_easy_upkeep,libcurl,curl/curl.h"
 prim__curlEasyUpkeep : AnyPtr -> PrimIO Int
+
+------------------------------------------------------------------------
+-- Structured headers
+------------------------------------------------------------------------
 
 -- `struct curl_header` itself (curl/header.h: `{ char *name; char
 -- *value; size_t amount; size_t index; unsigned int origin; void
@@ -419,6 +471,10 @@ prim__curlEasyHeader : AnyPtr -> String -> Int -> Int -> PrimIO HeaderPtr
 %foreign "C:curl_easy_nextheader,libcurl,curl/curl.h"
 prim__curlEasyNextheader : AnyPtr -> Int -> Int -> HeaderPtr -> PrimIO HeaderPtr
 
+------------------------------------------------------------------------
+-- Global init/cleanup
+------------------------------------------------------------------------
+
 ||| `CURL_GLOBAL_ALL`, per curl/curl.h.
 curlGlobalAll : Int
 curlGlobalAll = 3
@@ -430,6 +486,10 @@ curlGlobalInit = MkCURLcode <$> primIO (prim__curlGlobalInit curlGlobalAll)
 export
 curlGlobalCleanup : HasIO io => io ()
 curlGlobalCleanup = primIO prim__curlGlobalCleanup
+
+------------------------------------------------------------------------
+-- Easy handle lifecycle
+------------------------------------------------------------------------
 
 ||| `Nothing` if libcurl itself reports allocation failure -- see
 ||| curl_easy_init(3), never expected to fire on any of this repo's
@@ -479,6 +539,10 @@ export
 curlEasyReset : HasIO io => AnyPtr -> io ()
 curlEasyReset h = primIO (prim__curlEasyReset h)
 
+------------------------------------------------------------------------
+-- curl_easy_getinfo
+------------------------------------------------------------------------
+
 export
 curlEasyGetinfoLong : HasIO io => AnyPtr -> CURLINFO -> io Int
 curlEasyGetinfoLong h (MkCURLINFO i) = primIO (prim__curlEasyGetinfoLong h i)
@@ -506,6 +570,10 @@ curlEasyGetinfoSlist h (MkCURLINFO i) = believe_me <$> primIO (prim__curlEasyGet
 export
 curlEasyGetinfoSocket : HasIO io => AnyPtr -> CURLINFO -> io Int
 curlEasyGetinfoSocket h (MkCURLINFO i) = primIO (prim__curlEasyGetinfoSocket h i)
+
+------------------------------------------------------------------------
+-- curl_slist
+------------------------------------------------------------------------
 
 ||| An empty header list, per `curl_slist_append(3)`'s own contract
 ||| that a `NULL` first argument starts a fresh one -- `System.FFI`'s
@@ -552,6 +620,10 @@ curlSlistToList list =
                        Nothing => rest
                        Just s => s :: rest
 
+------------------------------------------------------------------------
+-- Escape/unescape
+------------------------------------------------------------------------
+
 ||| Wraps a non-NULL libcurl-allocated `char *` in a `GCAnyPtr` keyed
 ||| to `curl_free`, then reads it back leak-free through
 ||| `prim__curlGetStringGC`. Safe on both remaining backends: a
@@ -585,6 +657,10 @@ curlEasyUnescape h s = do
     if prim__nullAnyPtr raw /= 0
        then pure Nothing
        else Just <$> curlReadAndFree raw
+
+------------------------------------------------------------------------
+-- Version / curl_version_info
+------------------------------------------------------------------------
 
 export
 curlVersion : HasIO io => io String
@@ -624,6 +700,10 @@ curlVersionInfo = do
         features   = getField v "features"
         sslVersion = ptrToString (getField v "ssl_version")
     pure $ MkVersionInfo version versionNum host features sslVersion
+
+------------------------------------------------------------------------
+-- URL API
+------------------------------------------------------------------------
 
 ||| `Nothing` on the same allocation-failure contract as
 ||| `curlEasyInit` (`curl_url(3)`).
@@ -670,6 +750,10 @@ curlUrlGet u (MkCURLUPart p) flags = do
 export
 curlUrlStrerror : HasIO io => CURLUcode -> io String
 curlUrlStrerror (MkCURLUcode c) = primIO (prim__curlUrlStrerror c)
+
+------------------------------------------------------------------------
+-- Multi interface
+------------------------------------------------------------------------
 
 ||| `Nothing` on the same allocation-failure contract as `curlEasyInit`
 ||| (`curl_multi_init(3)`).
@@ -737,6 +821,10 @@ curlMultiInfoRead m = do
          result <- primIO (prim__curlMultimsgResult msg)
          pure $ Just (MkCURLMSG what, h, MkCURLcode result)
 
+------------------------------------------------------------------------
+-- Share interface
+------------------------------------------------------------------------
+
 ||| `Nothing` on the same allocation-failure contract as `curlEasyInit`
 ||| (`curl_share_init(3)`).
 export
@@ -765,6 +853,10 @@ curlShareSetopt sh share (MkCurlLockData d) =
 export
 curlShareStrerror : HasIO io => CURLSHcode -> io String
 curlShareStrerror (MkCURLSHcode c) = primIO (prim__curlShareStrerror c)
+
+------------------------------------------------------------------------
+-- Mime interface
+------------------------------------------------------------------------
 
 ||| `Nothing` on the same allocation-failure contract as `curlEasyInit`
 ||| (`curl_mime_init(3)`). `h` is the easy handle the resulting mime
@@ -831,6 +923,10 @@ curlMimeHeaders : HasIO io => AnyPtr -> AnyPtr -> (takeOwnership : Bool) -> io C
 curlMimeHeaders part headers takeOwnership =
     MkCURLcode <$> primIO (prim__curlMimeHeaders part headers (if takeOwnership then 1 else 0))
 
+------------------------------------------------------------------------
+-- Pause/upkeep
+------------------------------------------------------------------------
+
 ||| `action` -- see `Network.Curl.Types`'s own `curlpause_*` bitmask
 ||| constants, OR'd together with `Data.Bits`'s own `.|.` for more than
 ||| one of `curlpause_RECV`/`curlpause_SEND` at once.
@@ -841,6 +937,10 @@ curlEasyPause h action = MkCURLcode <$> primIO (prim__curlEasyPause h action)
 export
 curlEasyUpkeep : HasIO io => AnyPtr -> io CURLcode
 curlEasyUpkeep h = MkCURLcode <$> primIO (prim__curlEasyUpkeep h)
+
+------------------------------------------------------------------------
+-- Structured headers
+------------------------------------------------------------------------
 
 ||| rc2-only, no Chez binding -- see `prim__curlEasyHeader`'s own
 ||| doc comment. `Nothing` on `CURLHE_MISSING`/any other non-OK
@@ -871,6 +971,10 @@ curlEasyNextheader h origin request prev = do
     if prim__nullAnyPtr (believe_me hdr) /= 0
        then pure Nothing
        else pure $ Just (believe_me hdr, getField hdr "name", getField hdr "value")
+
+------------------------------------------------------------------------
+-- Response-body capture
+------------------------------------------------------------------------
 
 ||| Performs the transfer with `CURLOPT_WRITEDATA` pointed at an
 ||| in-memory capture stream (`System.IO.MemStream`, `rc2base`), so the

@@ -3,6 +3,10 @@ module Network.Curl.Types
 -- Copyright 2026, Hattori,Hiroki. All rights reserved.
 -- This module was licensed by BSD3.
 
+------------------------------------------------------------------------
+-- CURLcode
+------------------------------------------------------------------------
+
 ||| A libcurl `CURLcode` result. Wrapped rather than a bare `Int` so
 ||| callers can't accidentally compare it against a `CURLoption` value.
 public export
@@ -22,6 +26,10 @@ Show CURLcode where
 public export
 curle_OK : CURLcode
 curle_OK = MkCURLcode 0
+
+------------------------------------------------------------------------
+-- CURLoption
+------------------------------------------------------------------------
 
 ||| A libcurl `CURLoption` -- the value passed as `curl_easy_setopt`'s
 ||| own second argument. Every option value below is `CURLOPTTYPE_*`
@@ -103,6 +111,21 @@ public export
 curlopt_COPYPOSTFIELDS : CURLoption
 curlopt_COPYPOSTFIELDS = MkCURLoption 10165 -- CURLOPTTYPE_OBJECTPOINT + 165
 
+||| `curl_mime_init`'s own result, set via `curl_easy_setopt`.
+public export
+curlopt_MIMEPOST : CURLoption
+curlopt_MIMEPOST = MkCURLoption 10269 -- CURLOPTTYPE_OBJECTPOINT + 269
+
+||| Attaches a `curl_share_init` handle to this easy handle, via
+||| `curlEasySetoptSlist h curlopt_SHARE sh`.
+public export
+curlopt_SHARE : CURLoption
+curlopt_SHARE = MkCURLoption 10100 -- CURLOPTTYPE_OBJECTPOINT + 100
+
+------------------------------------------------------------------------
+-- CURLINFO
+------------------------------------------------------------------------
+
 ||| A libcurl `CURLINFO` -- the value passed as `curl_easy_getinfo`'s
 ||| own second argument. Every value below is `CURLINFO_*`'s own
 ||| `CURLINFO_STRING`/`CURLINFO_LONG`/`CURLINFO_DOUBLE`/`CURLINFO_SLIST`/
@@ -178,6 +201,10 @@ public export
 curlinfo_ACTIVESOCKET : CURLINFO
 curlinfo_ACTIVESOCKET = MkCURLINFO 5242924 -- CURLINFO_SOCKET + 44
 
+------------------------------------------------------------------------
+-- CURLUcode / CURLUPart
+------------------------------------------------------------------------
+
 ||| A `CURLUcode` result from the URL API (`curl_url_get`/
 ||| `curl_url_set`) -- a distinct enum from `CURLcode` in curl/curl.h
 ||| itself, so kept as its own wrapper here too.
@@ -244,6 +271,10 @@ public export
 curlupart_FRAGMENT : CURLUPart
 curlupart_FRAGMENT = MkCURLUPart 9
 
+------------------------------------------------------------------------
+-- CURLMcode / CURLMSG
+------------------------------------------------------------------------
+
 ||| A libcurl `CURLMcode` result from the multi interface -- a
 ||| distinct enum from both `CURLcode` and `CURLUcode` in curl/multi.h.
 ||| Note `CURLM_CALL_MULTI_PERFORM = -1` is the enum's own first
@@ -284,16 +315,9 @@ public export
 curlmsg_DONE : CURLMSG
 curlmsg_DONE = MkCURLMSG 1
 
-||| `curl_mime_init`'s own result, set via `curl_easy_setopt`.
-public export
-curlopt_MIMEPOST : CURLoption
-curlopt_MIMEPOST = MkCURLoption 10269 -- CURLOPTTYPE_OBJECTPOINT + 269
-
-||| Attaches a `curl_share_init` handle to this easy handle, via
-||| `curlEasySetoptSlist h curlopt_SHARE sh`.
-public export
-curlopt_SHARE : CURLoption
-curlopt_SHARE = MkCURLoption 10100 -- CURLOPTTYPE_OBJECTPOINT + 100
+------------------------------------------------------------------------
+-- CURLSHcode / CurlLockData
+------------------------------------------------------------------------
 
 ||| A libcurl `CURLSHcode` result from the share interface -- a
 ||| distinct enum from `CURLcode`/`CURLUcode`/`CURLMcode` in
@@ -339,6 +363,10 @@ public export
 curllockdata_SSL_SESSION : CurlLockData
 curllockdata_SSL_SESSION = MkCurlLockData 4
 
+------------------------------------------------------------------------
+-- curlpause_* bitmask
+------------------------------------------------------------------------
+
 ||| `curl_easy_pause`'s own `action` bitmask (curl/curl.h's own
 ||| `CURLPAUSE_*` -- a plain `Int`, not a wrapper record like
 ||| `CURLoption`/`CURLINFO`/etc. above: unlike those, this one is
@@ -362,6 +390,10 @@ curlpause_ALL = 5
 public export
 curlpause_CONT : Int
 curlpause_CONT = 0
+
+------------------------------------------------------------------------
+-- CURLHcode / curlh_* bitmask
+------------------------------------------------------------------------
 
 ||| A libcurl `CURLHcode` result from the structured header API
 ||| (`curl_easy_header`) -- a distinct enum from every other `*code`

@@ -3,11 +3,7 @@ module Main
 -- Copyright 2026, Hattori,Hiroki. All rights reserved.
 -- This module was licensed by BSD3.
 
--- Exercises Share/Mime's own new bindings. Both are fully bound on
--- Chez too -- unlike Phase 1/2's own output-pointer/variadic-getinfo
--- bindings, curl_share_setopt/curl_mime_* only ever take plain input
--- values or pointers, the same "safe to bind directly" shape
--- curl_easy_setopt's own overloads already established.
+-- Exercises the curl_share_* and curl_mime_* bindings.
 
 import Network.Curl.Raw
 import Network.Curl.Types
@@ -24,7 +20,7 @@ main = do
     Just sh <- curlShareInit
         | Nothing => putStrLn "curl_share_init failed"
     MkCURLSHcode 0 <- curlShareSetopt sh True curllockdata_DNS
-        | e1 => putStrLn ("curl_share_setopt failed: " ++ !(curlShareStrerror e1))
+        | e1 => putStrLn ("curl_share_setopt failed: " ++ curlShareStrerror e1)
 
     Just h1 <- curlEasyInit
         | Nothing => putStrLn "curl_easy_init failed"
@@ -47,7 +43,7 @@ main = do
     curlEasyCleanup h2
 
     MkCURLSHcode 0 <- curlShareCleanup sh
-        | e2 => putStrLn ("curl_share_cleanup failed: " ++ !(curlShareStrerror e2))
+        | e2 => putStrLn ("curl_share_cleanup failed: " ++ curlShareStrerror e2)
 
     -- Mime: a two-field multipart form, attached to a POST. No echo
     -- server to verify field contents against, but exercises

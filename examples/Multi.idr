@@ -3,13 +3,6 @@ module Main
 -- Copyright 2026, Hattori,Hiroki. All rights reserved.
 -- This module was licensed by BSD3.
 
--- rc2-only: exercises the curl_multi_* interface (concurrent
--- transfers on a single thread). curl_multi_perform/wait/info_read
--- have no Chez binding at all -- see Network.Curl.Raw's own doc
--- comment on prim__curlMultiPerform. Building this against Chez fails
--- cleanly at this file's own curlMultiPerform/Wait/InfoRead call
--- sites -- expected, not a regression.
-
 import Network.Curl.Raw
 import Network.Curl.Types
 
@@ -45,12 +38,12 @@ drainMessages multi = do
 partial
 loop : AnyPtr -> IO ()
 loop multi = do
-    Just running <- curlMultiPerform multi
-        | Nothing => idris_crash "curl_multi_perform failed"
+    Right running <- curlMultiPerform multi
+        | Left c => idris_crash ("curl_multi_perform failed: " ++ curlMultiStrerror c)
     drainMessages multi
     when (running > 0) $ do
-        Just _ <- curlMultiWait multi 1000
-            | Nothing => idris_crash "curl_multi_wait failed"
+        Right _ <- curlMultiWait multi 1000
+            | Left c => idris_crash ("curl_multi_wait failed: " ++ curlMultiStrerror c)
         loop multi
 
 partial
@@ -67,5 +60,5 @@ main = do
     loop multi
 
     MkCURLMcode 0 <- curlMultiCleanup multi
-        | c2 => putStrLn ("curl_multi_cleanup failed: " ++ !(curlMultiStrerror c2))
+        | c2 => putStrLn ("curl_multi_cleanup failed: " ++ curlMultiStrerror c2)
     curlGlobalCleanup

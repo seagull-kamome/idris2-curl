@@ -31,20 +31,18 @@ with custom headers, inspect the result, and parse/build URLs:
 `curl_easy_cleanup`, `curl_easy_setopt` (string-, long-, and
 slist-valued options), `curl_easy_perform`, `curl_easy_strerror`,
 `curl_easy_duphandle`, `curl_easy_reset`, `curl_easy_getinfo`
-(string/long/double `CURLINFO`s -- rc2 only, see
-`doc/variadic-getinfo.md`), `curl_slist_append`, `curl_slist_free_all`,
+(every `CURLINFO` type), `curl_slist_append`, `curl_slist_free_all`,
 `curl_easy_escape`, `curl_easy_unescape`, `curl_free`, `curl_version`,
-`curl_version_info` (five fields -- rc2 only, see
-`doc/version-info-struct.md`), the `curl_url_*` URL API (`curl_url_get`
-is rc2 only, same reason as `curl_easy_getinfo`), and enough of
+`curl_version_info` (the `CURLVERSION_FIRST` fields), the `curl_url_*`
+URL API, and enough of
 the `curl_multi_*` interface to drive several concurrent transfers to
-completion on one thread (`curl_multi_perform`/`_wait`/`_info_read` are
-rc2 only, see `doc/multi-interface.md`), a shared DNS/session
+completion on one thread, a shared DNS/session
 cache across easy handles (`curl_share_*`), multipart form uploads
-(`curl_mime_*`) -- both fully bound on both backends -- pausing/
-keepalive (`curl_easy_pause`/`curl_easy_upkeep`, also fully bound), and
-the structured header API (`curl_easy_header`/`curl_easy_nextheader`
--- rc2 only, same reasoning as `curl_easy_getinfo`). See
+(`curl_mime_*`), pausing/keepalive (`curl_easy_pause`/
+`curl_easy_upkeep`), and the structured header API
+(`curl_easy_header`/`curl_easy_nextheader`). Everything works on both
+backends with no C shim of its own (`doc/ffi-without-shims.md`),
+except response-body capture, which is rc2-only (see `TODO.md`). See
 `src/Network/Curl/Raw.idr` for the
 full list and `src/Network/Curl/Types.idr` for the `CURLoption`/
 `CURLcode`/`CURLINFO`/`CURLUcode`/`CURLUPart` constants currently
@@ -62,10 +60,8 @@ smaller easy-interface gaps).
 `fetch : FetchRequest -> io (Either FetchError FetchResponse)` (plus
 `fetchBytes`/`fetchText`/`get`/`post`/`request`) -- one function call
 per request, no `curl_global_init`/`curl_easy_init`/setopt/`curl_slist`
-bookkeeping of your own. **rc2-only as a whole**: the HTTP status code
-itself needs `curl_easy_getinfo`, which has no Chez binding at all
-(same reason as `curl_easy_getinfo` above) -- see the module's own
-header comment. `examples/Fetch.idr` exercises it end to end.
+bookkeeping of your own. rc2-only for now, since it captures the body
+(see `TODO.md`). `examples/Fetch.idr` exercises it end to end.
 
 ## Backends
 
@@ -74,9 +70,7 @@ Verified end-to-end (a real HTTP GET against `example.com`) on:
 - The default Chez backend (`idris2`)
 - `idris2-rc-cg`'s `rc2` backend
 
-A `const char *`-returning function like `curl_easy_strerror` needs
-backend-specific handling to build cleanly on the statically-linked
-`rc2` backend -- see `doc/const-char-ffi.md`.
+`tests/verify.sh` runs the network-free regression tests on both.
 
 ## Building
 
@@ -86,8 +80,7 @@ idris2 --build package.ipkg
 
 builds and type-checks the library itself against the default Chez
 backend. See `AGENT.md`'s own "Build & test" section for building
-`examples/*.idr` against the library on either backend above (local
-installation, include/link flags, etc.).
+`examples/*.idr` against the library on either backend above.
 
 ## License
 

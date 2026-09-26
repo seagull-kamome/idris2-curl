@@ -19,53 +19,32 @@ C codegen backend, not just the default Chez backend.
 ## Layout
 
 - `package.ipkg` — library package (`depends = base, contrib,
-  rc2base`; `rc2base` -- `idris2-rc-cg`'s own shared RefC/rc2 runtime
-  helper library, checked out as a sibling repo -- is the one
-  exception to an otherwise dependency-free design, needed for
-  `Data.String.FFI.ptrToString`'s cross-backend `AnyPtr -> Maybe
-  String` read, see `curlUrlGet`'s own doc comment)
+  rc2base`; `rc2base` -- `idris2-rc-cg`'s own runtime helper library,
+  checked out as a sibling repo -- supplies `Data.String.FFI.ptrToString`
+  and the `System.IO.MemStream` body capture)
 - `src/Network/Curl/Types.idr` — `CURLcode`/`CURLoption` wrapper
   records and hand-written constants (no `%runElab` deriving)
 - `src/Network/Curl/Raw.idr` — direct `%foreign "C:curl_*,libcurl,curl/curl.h"`
-  declarations, one per bound libcurl function
+  declarations and their `HasIO` wrappers. No C shim: output pointers
+  and C structs go through `System.FFI.Struct`, see
+  `doc/ffi-without-shims.md`
 - `src/Network/Curl/Fetch.idr` — a JS `fetch()`-shaped convenience
   layer built on `Raw.idr` (`fetch`/`fetchBytes`/`fetchText`/`get`/
-  `post`/`request`) -- rc2-only as a whole, since the HTTP status code
-  itself needs `curl_easy_getinfo` (no Chez binding at all); see its
-  own header comment
-- `csrc/` — small C shims a binding needs beyond a plain `%foreign`
-  declaration (currently `idris2curl_compat.h`, see `doc/`)
-- `examples/` — small standalone programs that exercise the bindings
-  end to end, used to verify they build/link/run on Chez and
-  `idris2-rc-cg`'s `rc2` backend -- except `GetInfo.idr`,
-  `UrlGet.idr`, `VersionInfo.idr`, `Multi.idr`, `Header.idr`,
-  `GetCapture.idr`, `GetInfoOfft.idr`, and `GetCaptureText.idr`, which
-  are rc2-only (see `doc/variadic-getinfo.md`/
-  `doc/version-info-struct.md`/`doc/multi-interface.md`/
-  `doc/memstream-capture.md` -- `GetInfoOfft.idr`'s own
-  `CURLINFO_OFF_T`/`Int64` gap and `GetCaptureText.idr`'s own
-  `Data.TextBuffer` gap are rc2-specific reasons beyond the plain
-  "no Chez binding" every other rc2-only example shares)
+  `post`/`request`)
+- `examples/` — small standalone programs using the bindings. Most
+  talk to `example.com`, so they are run by hand, not by
+  `tests/verify.sh`. All build on both backends; the body-capture ones
+  (`GetCapture.idr`, `GetCaptureText.idr`, `Fetch.idr`) only run on
+  rc2 (`doc/memstream-capture.md`)
+- `tests/` — `verify.sh` plus network-free regression programs
+  (`src/`), their expected output (`expected/`) and fixtures (`data/`)
 - `doc/` — implementation deep-dives, meant to let a future session
-  regain context without re-deriving the design (currently:
-  `const-char-ffi.md` for why a `const char *`-returning libcurl
-  function needs a `csrc/` shim and two separate `%foreign` targets,
-  one per backend; `variadic-getinfo.md` for why `curl_easy_getinfo`/
-  `curl_url_get` have no Chez binding at all; `version-info-struct.md`
-  for how `curl_version_info_data`/`curl_slist`/`curl_header` (real C
-  structs, not scalars) are each bound via `System.FFI`'s own
-  `Struct`/`getField` plus rc2's own `%cg rc2 externStruct=<name>`
-  directive rather than a per-field `csrc/` shim, and why `CURLMsg`
-  alone can't be (a real C `union` field); `multi-interface.md` for the
-  output-pointer/
-  no-Chez-binding reasoning applied to `curl_multi_*`;
-  `int-width-pitfall.md` for why a negative/sentinel `Int` `%foreign`
-  argument (e.g. `CURL_ZERO_TERMINATED`) isn't safe on both this
-  project's backends -- `Int`'s own width differs by backend; 
-  `memstream-capture.md` for capturing a response body into a
-  `Buffer`/`String`/`TextBuffer` -- one copy each -- without binding
-  `CURLOPT_WRITEFUNCTION`, via `CURLOPT_WRITEDATA` and
-  `open_memstream(3)`)
+  regain context without re-deriving the design:
+  `ffi-without-shims.md` (how every binding avoids a C shim on both
+  backends), `int-width-pitfall.md` (why a negative/sentinel `Int`
+  `%foreign` argument such as `CURL_ZERO_TERMINATED` isn't safe on
+  Chez), `memstream-capture.md` (capturing a response body without
+  `CURLOPT_WRITEFUNCTION`)
 - `TODO.md` — open gaps and deferred design decisions (removed once
   implemented and documented elsewhere)
 
@@ -106,55 +85,35 @@ diffのみで成否判定できるようにする。
 置きテスト終了時には消さずに後で確認できるように残しおく。このディレクトリはテストスクリプト
 の先頭で掃除してからテストが実施されるようにしておく。
 
-現状は`examples/`の手動実行のみで、まだこの規模の`tests/verify.sh`は無い。
-退行テストと呼べる本数が増えた時点で整備する。
-
 ## Build & test
 
-Default Chez backend (needs `rc2base` on the package path -- checked
-out as a sibling `idris2-rc-cg` repo, installed per its own
-`libs/rc2base/tests/verify.sh`):
-```sh
-export IDRIS2_PACKAGE_PATH="../idris2-rc-cg/libs/rc2base/.local-install/idris2-0.8.0"
-idris2 --build package.ipkg
-```
+Run the tests with `tests/verify.sh` (it enters its own `nix-shell`).
+It installs the library, then builds and runs each test in its `TESTS`
+list on Chez and rc2 against `tests/expected/`. How to run a single test by
+hand is in its header comment.
 
-To build `examples/*.idr` against the library (rather than the plain
-Chez backend above, which only type-checks `package.ipkg` itself),
-install the library into a local prefix first -- the default Idris2
-package location lives in a read-only nix store here. `csrc/` (see
-below) must be on the include path for every backend:
-```sh
-export IDRIS2_PACKAGE_PATH="../idris2-rc-cg/libs/rc2base/.local-install/idris2-0.8.0"
-IDRIS2_PREFIX="$(pwd)/.local-install" idris2 --install package.ipkg
-export IDRIS2_CFLAGS="-Icsrc"
-IDRIS2_PREFIX="$(pwd)/.local-install" idris2 -p curl -p rc2base -o get examples/Get.idr
-```
-`examples/GetInfo.idr` is rc2-only -- it has no Chez `%foreign`
-target at all (`doc/variadic-getinfo.md`) and fails to build here.
-
-Against `idris2-rc-cg`'s rc2 backend (requires that repo checked out
-as a sibling directory, its own `env.sh` sourced, `rc2base` installed
-per its own `libs/rc2base/tests/verify.sh`, and `libcurl`/`curl.h`
-available, e.g. via `nix-shell -p curl`):
+Every backend runs against `idris2-rc-cg`'s own self-built toolchain
+(checked out as a sibling directory and built, `rc2base` included);
+sourcing its `env.sh` puts that `idris2` first on `PATH`, and its
+default prefix (`../idris2-rc-cg/install`) already holds `base`/
+`contrib`/`rc2base` -- no `IDRIS2_PREFIX`/`IDRIS2_PACKAGE_PATH`
+override is needed. Installing needs no libcurl; compiling an example
+does (`nix-shell -p gcc gmp pkg-config curl`):
 ```sh
 source ../idris2-rc-cg/env.sh
-export IDRIS2_PACKAGE_PATH="$IDRIS2_PACKAGE_PATH:$(pwd)/.local-install/idris2-0.8.0:../idris2-rc-cg/libs/rc2base/.local-install/idris2-0.8.0"
-export IDRIS2_CFLAGS="-Icsrc -I../idris2-rc-cg/libs/rc2base/.local-install/idris2-0.8.0/rc2base-0.1.0/lib -I../idris2-rc-cg/install/idris2-0.8.0/support"
-export IDRIS2_LDFLAGS="$(pkg-config --libs-only-L libcurl) -L../idris2-rc-cg/libs/rc2base/.local-install/idris2-0.8.0/rc2base-0.1.0/lib"
+idris2 --install package.ipkg
+export IDRIS2_LDFLAGS="$(pkg-config --libs-only-L libcurl)"
+idris2 -p curl -p rc2base -o get examples/Get.idr
 ../idris2-rc-cg/rc2/build/exec/idris2-rc2 --cg rc2 -p curl -p rc2base -o get_rc2 examples/Get.idr
 ```
-`-lcurl` itself no longer needs `IDRIS2_LDLIBS` set by hand under rc2
--- see `doc/const-char-ffi.md`'s own "Linker caveat" section for the
-full story. Only the `-L` search path above (nix's libcurl isn't on
-the linker's default path) and, at *run* time, `LD_LIBRARY_PATH`
-pointing at the same directory are still needed by hand.
+Run the result with `LD_LIBRARY_PATH="$(pkg-config --variable=libdir
+libcurl)"` -- nix's libcurl isn't on the default runtime search path.
+rc2 derives `-lcurl` from the `%foreign` lib field itself, so only the
+`-L` path above is needed.
 
-See `doc/const-char-ffi.md` for why `curl_easy_strerror` (and any
-future `const char *`-returning binding) needs `csrc/`'s own shim and
-two separate `%foreign` targets, one per backend, and
-`doc/variadic-getinfo.md` for why `curl_easy_getinfo` has no Chez
-binding at all.
+Build rc2 and Chez in separate `--build-dir`s (as `verify.sh` does): a
+plain `idris2` build drops any `%cg rc2` directive and leaves a TTC
+that a later rc2 build would reuse.
 
 ## Conventions
 

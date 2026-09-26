@@ -21,7 +21,7 @@ main = do
     MkCURLcode 0 <- curlEasySetoptString h curlopt_URL "http://example.com"
         | c3 => putStrLn ("setopt URL failed: " ++ show c3)
     result <- curlEasyPerform h
-    msg <- curlEasyStrerror result
+    let msg = curlEasyStrerror result
     putStrLn ("curl_easy_perform result: " ++ show result ++ " (" ++ msg ++ ")")
     curlEasyCleanup h
     curlGlobalCleanup

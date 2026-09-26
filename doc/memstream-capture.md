@@ -31,7 +31,7 @@ nothing to do with libcurl specifically -- any C API with a
 "write to this `FILE *`" option could use the same trick. So the
 implementation lives in `idris2-rc-cg`'s own `rc2base` library as
 `System.IO.MemStream` (`support/c/memstream.c`/`.h`,
-`src/System/IO/MemStream.idr`), not in this repo's own `csrc/`.
+`src/System/IO/MemStream.idr`), not in this repo.
 `Network.Curl.Raw` consumes it purely as a client -- nothing in this
 library's own public API mentions `MemStream` at all; see the next
 section.

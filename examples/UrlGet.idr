@@ -3,11 +3,6 @@ module Main
 -- Copyright 2026, Hattori,Hiroki. All rights reserved.
 -- This module was licensed by BSD3.
 
--- rc2-only: exercises curl_url_get, which has no Chez binding at
--- all (see Network.Curl.Raw's own doc comment on prim__curlUrlGet).
--- Building this against Chez fails cleanly at this file's own
--- curlUrlGet call sites -- expected, not a regression.
-
 import Network.Curl.Raw
 import Network.Curl.Types
 
@@ -16,7 +11,7 @@ main = do
     Just u <- curlUrl
         | Nothing => putStrLn "curl_url failed"
     MkCURLUcode 0 <- curlUrlSet u curlupart_URL "https://example.com/path?q=1" 0
-        | e1 => putStrLn ("curl_url_set failed: " ++ !(curlUrlStrerror e1))
+        | e1 => putStrLn ("curl_url_set failed: " ++ curlUrlStrerror e1)
 
     Just scheme <- curlUrlGet u curlupart_SCHEME 0
         | Nothing => putStrLn "curl_url_get(SCHEME) failed"

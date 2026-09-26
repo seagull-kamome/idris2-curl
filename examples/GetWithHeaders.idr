@@ -3,12 +3,8 @@ module Main
 -- Copyright 2026, Hattori,Hiroki. All rights reserved.
 -- This module was licensed by BSD3.
 
--- Exercises Phase 1's own new bindings: curl_slist (custom request
--- header), curl_easy_reset, curl_easy_duphandle. curl_easy_getinfo
--- isn't exercised here -- it has no Chez binding at all yet (see
--- doc/const-char-ffi.md-style reasoning in Network.Curl.Raw's own doc
--- comment on prim__curlEasyGetinfoLong); a separate rc2-only
--- example covers it instead.
+-- Exercises curl_slist (a custom request header), curl_easy_reset and
+-- curl_easy_duphandle.
 
 import Network.Curl.Raw
 import Network.Curl.Types
@@ -29,7 +25,7 @@ main = do
         | c3 => putStrLn ("setopt URL failed: " ++ show c3)
 
     result <- curlEasyPerform h
-    msg <- curlEasyStrerror result
+    let msg = curlEasyStrerror result
     putStrLn ("curl_easy_perform result: " ++ show result ++ " (" ++ msg ++ ")")
 
     curlEasyReset h

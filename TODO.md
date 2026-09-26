@@ -31,7 +31,7 @@ callback.
 Bound: `curl_multi_init`/`_cleanup`/`_add_handle`/`_remove_handle`/
 `_perform`/`_wait`/`_info_read`/`_strerror` -- enough to drive multiple
 concurrent transfers to completion on one thread (see
-`doc/multi-interface.md`, `examples/Multi.idr`). Not bound:
+`examples/Multi.idr`, `tests/src/TestMulti.idr`). Not bound:
 `curl_multi_setopt` (multi-handle options -- e.g. max concurrent
 connections -- none needed yet), `curl_multi_fdset`/
 `curl_multi_socket_action` (the older/lower-level polling APIs
@@ -47,9 +47,7 @@ Bound: `curl_share_init`/`_cleanup`/`_setopt` (`CURLSHOPT_SHARE`/
 `_UNSHARE` only -- `_LOCKFUNC`/`_UNLOCKFUNC`/`_USERDATA` need a
 callback, see above)/`_strerror`; `curl_mime_init`/`_free`/`_addpart`/
 `_name`/`_filename`/`_type`/`_data`/`_filedata`/`_headers`. Fully bound
-on both backends -- unlike most of Phase 1/2's own bindings,
-nothing here needs an output-pointer/variadic-argument shim. Not
-bound: `curl_mime_encoder`, `curl_mime_data_cb` (needs a callback),
+on both backends. Not bound: `curl_mime_encoder`, `curl_mime_data_cb` (needs a callback),
 `curl_mime_subparts` (nested multipart, no concrete need yet). Add as
 a concrete need comes up.
 
@@ -57,24 +55,13 @@ a concrete need comes up.
 
 Bound: `curl_easy_pause`/`curl_easy_upkeep` (fully bound on both
 backends, no output-pointer trouble) and `curl_easy_header`/
-`curl_easy_nextheader` (the structured header API -- `curl_easy_header`
-itself rc2-only, same output-pointer-collapse reasoning as
-`curl_easy_getinfo`; see `Network.Curl.Raw`'s own doc comment on
-`prim__curlEasyHeader`). `curl_easy_pause` itself is only meaningful
+`curl_easy_nextheader` (the structured header API). `curl_easy_pause` itself is only meaningful
 called from inside a transfer callback -- confirmed directly,
 including with a bare C reproduction outside Idris, that calling it on
 a handle in either of the only two states reachable without one
 (before/after a transfer) always returns
 `CURLE_BAD_FUNCTION_ARGUMENT`; `examples/PauseUpkeep.idr` documents
 and expects this rather than treating it as a binding bug.
-
-`curl_header` (curl/header.h) now reads `name`/`value` via
-`Struct`/`getField` too (`Network.Curl.Raw`'s own `HeaderPtr`, see
-`doc/version-info-struct.md`), same mechanism as `curl_version_info_data`
-and `curl_slist`. `CURLMsg` (`doc/multi-interface.md`) is NOT a
-candidate for the same treatment -- its own `data` field is a real C
-`union`, which `getField` has no `CFType` for at all, unrelated to the
-typedef-collision problem `externStruct` solves.
 
 Not bound: `curl_easy_recv`/`curl_easy_send` (raw socket access --
 binary buffers, no concrete need yet), `curl_pushheader_byname`/
@@ -97,3 +84,12 @@ one bound constant each -- `off_t` is represented as `Int64`
 itself, independent of the host platform's own `long` width).
 
 
+
+## Body capture is rc2-only
+
+`curlEasyPerformTo{Buffer,String,TextBuffer}` (and so
+`Network.Curl.Fetch`) go through rc2base's `System.IO.MemStream`, whose
+C helpers are only built as a static `libidris2rc2base.a`. A Chez
+program reaching them fails at start-up looking for
+`libidris2rc2base.so`. Fixing it belongs in rc2base (also building a
+shared library for Chez to load), not here.

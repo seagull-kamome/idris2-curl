@@ -3,13 +3,6 @@ module Main
 -- Copyright 2026, Hattori,Hiroki. All rights reserved.
 -- This module was licensed by BSD3.
 
--- rc2-only: exercises curl_easy_getinfo's own CURLINFO_OFF_T tag
--- (CURLINFO_SIZE_DOWNLOAD_T), which needs an Int64-returning %foreign
--- target -- see Network.Curl.Raw's own doc comment on
--- prim__curlEasyGetinfoOfft. Chez has no binding here either, same
--- doc/variadic-getinfo.md reasoning as every other curlEasyGetinfo*
--- function.
-
 import Network.Curl.Raw
 import Network.Curl.Types
 
@@ -27,7 +20,7 @@ main = do
         | c3 => putStrLn ("curl_easy_perform failed: " ++ show c3)
 
     downloadSize <- curlEasyGetinfoOfft h curlinfo_SIZE_DOWNLOAD_T
-    putStrLn ("download size (off_t): " ++ show downloadSize)
+    putStrLn ("download size (off_t): " ++ either show show downloadSize)
 
     curlEasyCleanup h
     curlGlobalCleanup

@@ -27,7 +27,7 @@ main = do
     putStrLn ("TextBuffer length (codepoints): " ++ show (Data.TextBuffer.length t))
     putStrLn ("TextBuffer round-trip: " ++ toString t)
 
-    msg <- curlEasyStrerror result
+    let msg = curlEasyStrerror result
     putStrLn ("curl_easy_perform result: " ++ show result ++ " (" ++ msg ++ ")")
 
     curlEasyCleanup h

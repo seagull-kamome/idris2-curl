@@ -38,7 +38,7 @@ main = do
     putStrLn ("String length (bytes): " ++ show (length s))
     putStrLn ("String content: " ++ s)
 
-    msg <- curlEasyStrerror result
+    let msg = curlEasyStrerror result
     putStrLn ("curl_easy_perform result: " ++ show result ++ " (" ++ msg ++ ")")
 
     curlEasyCleanup h

@@ -3,12 +3,6 @@ module Main
 -- Copyright 2026, Hattori,Hiroki. All rights reserved.
 -- This module was licensed by BSD3.
 
--- rc2-only: exercises curl_easy_getinfo, which has no Chez
--- binding at all (see Network.Curl.Raw's own doc comment on
--- prim__curlEasyGetinfoLong for why). Building this against Chez
--- fails cleanly at this file's own getinfo call sites -- expected,
--- not a regression -- see AGENT.md's own "Build & test" section.
-
 import Network.Curl.Raw
 import Network.Curl.Types
 
@@ -30,17 +24,16 @@ main = do
     ctype <- curlEasyGetinfoString h curlinfo_CONTENT_TYPE
     totalTime <- curlEasyGetinfoDouble h curlinfo_TOTAL_TIME
     activeSocket <- curlEasyGetinfoSocket h curlinfo_ACTIVESOCKET
-    putStrLn ("response code: " ++ show code)
-    putStrLn ("effective url: " ++ url)
-    putStrLn ("content type: " ++ ctype)
-    putStrLn ("total time: " ++ show totalTime)
-    putStrLn ("active socket is valid fd: " ++ show (activeSocket >= 0))
+    putStrLn ("response code: " ++ either show show code)
+    putStrLn ("effective url: " ++ either show id url)
+    putStrLn ("content type: " ++ either show id ctype)
+    putStrLn ("total time is non-negative: " ++ either show (show . (>= 0)) totalTime)
+    putStrLn ("active socket is valid fd: " ++ either show (show . (>= 0)) activeSocket)
 
-    -- No cookies set on this handle, so an empty list is expected --
-    -- exercises the CURLINFO_SLIST read path itself, not cookie
-    -- content. Caller-owned per curl_easy_getinfo(3): must be released
-    -- with curlSlistFreeAll, unlike every other getinfo tag above.
-    cookieSlist <- curlEasyGetinfoSlist h curlinfo_COOKIELIST
+    -- No cookies are set on this handle: this exercises the
+    -- CURLINFO_SLIST read path, not cookie content.
+    Right cookieSlist <- curlEasyGetinfoSlist h curlinfo_COOKIELIST
+        | Left c4 => putStrLn ("getinfo COOKIELIST failed: " ++ show c4)
     cookies <- curlSlistToList cookieSlist
     putStrLn ("cookie list: " ++ show cookies)
     curlSlistFreeAll cookieSlist

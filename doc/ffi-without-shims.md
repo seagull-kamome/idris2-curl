@@ -94,8 +94,8 @@ field list is the real C layout, in order: rc2 and Chez both lay the
 | `idris2curl_msg` | `CURLMsg` | `msg`, `easy_handle`, and the union read as its low 32 bits (`result`, little-endian only) |
 | `idris2curl_version_info` | `curl_version_info_data` | the prefix from `age` to `ssl_version` (a prefix is enough, since we only read) |
 
-String fields are declared `AnyPtr` and read with rc2base's
-`Data.String.FFI.ptrToString`, because Chez's `define-ftype` has no
+String fields are declared `AnyPtr` and read with a local `ptrToString`
+(upstream's `prim__getString`), because Chez's `define-ftype` has no
 `string` field type ("unrecognized ftype name string").
 
 Why not use libcurl's own names with rc2's `%cg rc2
@@ -133,12 +133,10 @@ It is only ever called on a pointer already known to be non-NULL.
 
 ## What is still rc2-only
 
-Body capture (`curlEasyPerformTo*`, and hence `Network.Curl.Fetch`) is
-still rc2-only. It goes through rc2base's `System.IO.MemStream`, whose C
-helpers are built only as a static `libidris2rc2base.a`. On Chez, a
-program that reaches it fails at start-up with "libidris2rc2base.so:
-cannot open shared object file". That limitation belongs to rc2base,
-not to this library (see `memstream-capture.md`).
+Only `curl-rc2`'s `curlEasyPerformToTextBuffer`, because `Data.TextBuffer` is an rc2
+runtime type. Body capture otherwise binds libc's `open_memstream`
+directly, so `String`/`Buffer` capture and `Network.Curl.Fetch` work on
+Chez too (`memstream-capture.md`).
 
 ## Tests
 

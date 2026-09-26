@@ -19,9 +19,7 @@ For the common "capture the whole response body" case specifically,
 `open_memstream(3)` `FILE *` redirects libcurl's own *default* writer
 into memory with no callback at all. See `doc/memstream-capture.md` and
 `Network.Curl.Raw`'s own `curlEasyPerformToBuffer`/`ToString`/
-`ToTextBuffer` -- the capture stream itself is `rc2base`'s own
-`System.IO.MemStream` (nothing curl-specific about `open_memstream`),
-never exposed in this library's own public API. Still open:
+`ToTextBuffer`, which bind libc's `open_memstream` directly. Still open:
 `CURLOPT_HEADERFUNCTION`/`CURLOPT_READFUNCTION` and genuinely streaming
 (rather than capture-then-read) body handling, which do need a real
 callback.
@@ -82,14 +80,3 @@ matching `Network.Curl.Raw` `curlEasyGetinfo*` function and at least
 one bound constant each -- `off_t` is represented as `Int64`
 (`curl_off_t` is always a real 64-bit signed integer in libcurl
 itself, independent of the host platform's own `long` width).
-
-
-
-## Body capture is rc2-only
-
-`curlEasyPerformTo{Buffer,String,TextBuffer}` (and so
-`Network.Curl.Fetch`) go through rc2base's `System.IO.MemStream`, whose
-C helpers are only built as a static `libidris2rc2base.a`. A Chez
-program reaching them fails at start-up looking for
-`libidris2rc2base.so`. Fixing it belongs in rc2base (also building a
-shared library for Chez to load), not here.

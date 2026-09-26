@@ -3,11 +3,8 @@ module Main
 -- Copyright 2026, Hattori,Hiroki. All rights reserved.
 -- This module was licensed by BSD3.
 
--- rc2-only: exercises Network.Curl.Fetch (fetch/fetchBytes/fetchText/
--- get/post) -- see that module's own header comment for why it's
--- rc2-only as a whole (the HTTP status code itself needs
--- curl_easy_getinfo, which has no Chez binding at all). Needs
--- outbound network access, like examples/Get.idr.
+-- Exercises Network.Curl.Fetch (fetch/fetchBytes/fetchText/get/post).
+-- Needs outbound network access, like examples/Get.idr.
 
 import Data.Buffer
 import Data.String

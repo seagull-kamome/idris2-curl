@@ -1,9 +1,17 @@
 # idris2-curl
 
-Minimal libcurl FFI bindings for Idris2, no third-party dependency
-besides `rc2base` (`idris2-rc-cg`'s own shared RefC/rc2 runtime helper
-library). Targets Chez and `idris2-rc-cg`'s `rc2` backend -- upstream
-RefC support was dropped as unneeded overhead for this project.
+Minimal libcurl FFI bindings for Idris2, depending on nothing but `base`
+and `contrib`, so a plain Idris2 (Chez) installation can use them.
+Targets Chez and `idris2-rc-cg`'s `rc2` backend -- upstream RefC
+support was dropped as unneeded overhead for this project.
+
+Two packages:
+- **`curl`** (`package.ipkg`) is the bindings themselves, for both
+  backends.
+- **`curl-rc2`** (`curl-rc2.ipkg`) adds `Network.Curl.TextBuffer`,
+  body capture into rc2base's `TextBuffer`. It depends on rc2base,
+  whose installation needs the rc2 toolchain, so it is only for rc2
+  users.
 
 ## Why this exists
 
@@ -42,7 +50,7 @@ cache across easy handles (`curl_share_*`), multipart form uploads
 `curl_easy_upkeep`), and the structured header API
 (`curl_easy_header`/`curl_easy_nextheader`). Everything works on both
 backends with no C shim of its own (`doc/ffi-without-shims.md`),
-except response-body capture, which is rc2-only (see `TODO.md`). See
+except capture into a `TextBuffer` (`curl-rc2`, see "Limitations"). See
 `src/Network/Curl/Raw.idr` for the
 full list and `src/Network/Curl/Types.idr` for the `CURLoption`/
 `CURLcode`/`CURLINFO`/`CURLUcode`/`CURLUPart` constants currently
@@ -60,8 +68,7 @@ smaller easy-interface gaps).
 `fetch : FetchRequest -> io (Either FetchError FetchResponse)` (plus
 `fetchBytes`/`fetchText`/`get`/`post`/`request`) -- one function call
 per request, no `curl_global_init`/`curl_easy_init`/setopt/`curl_slist`
-bookkeeping of your own. rc2-only for now, since it captures the body
-(see `TODO.md`). `examples/Fetch.idr` exercises it end to end.
+bookkeeping of your own. Works on both backends. `examples/Fetch.idr` exercises it end to end.
 
 ## Backends
 
@@ -71,6 +78,23 @@ Verified end-to-end (a real HTTP GET against `example.com`) on:
 - `idris2-rc-cg`'s `rc2` backend
 
 `tests/verify.sh` runs the network-free regression tests on both.
+
+## Limitations
+
+- **Capture into a `TextBuffer` is rc2-only**, in the separate
+  `curl-rc2` package: `Data.TextBuffer` is an rc2 runtime type. Use
+  `curlEasyPerformToString`/`ToBuffer` on Chez.
+- **Upstream RefC is not supported.** `const char *` returns such as
+  `curl_easy_strerror` fail its `-Werror` build.
+- **A captured handle keeps `CURLOPT_WRITEDATA` on a closed stream.**
+  Set it again (or reset the handle) before performing on that handle
+  without capture.
+- **Bodies of 2 GiB or more can't be captured into a `Buffer` on
+  Chez**, where the copy length is a 32-bit C `int`.
+- **No callback options** (`CURLOPT_WRITEFUNCTION`,
+  `CURLOPT_HEADERFUNCTION`, ...); see `TODO.md`.
+
+Details: `doc/memstream-capture.md`, `doc/int-width-pitfall.md`.
 
 ## Building
 

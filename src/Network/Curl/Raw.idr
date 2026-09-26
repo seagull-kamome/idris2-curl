@@ -11,10 +11,7 @@ module Network.Curl.Raw
 
 import Data.Buffer
 import Data.Maybe
-import Data.String.FFI
-import Data.TextBuffer
 import System.FFI
-import System.IO.MemStream as MemStream
 
 import Network.Curl.Types
 
@@ -107,6 +104,11 @@ withCell new del body = do
 
 nonNull : AnyPtr -> Maybe AnyPtr
 nonNull p = if prim__nullAnyPtr p /= 0 then Nothing else Just p
+
+-- A copy of the NUL-terminated string at `p`, read through upstream's
+-- own `idris2_getString`.
+ptrToString : AnyPtr -> Maybe String
+ptrToString p = map (\q => prim__getString (prim__castPtr q)) (nonNull p)
 
 ------------------------------------------------------------------------
 -- Foreign declarations
@@ -281,6 +283,20 @@ prim__curlEasyHeader : AnyPtr -> String -> Bits64 -> Bits32 -> Int -> CellPtr ->
 
 %foreign "C:curl_easy_nextheader,libcurl,curl/curl.h"
 prim__curlEasyNextheader : AnyPtr -> Bits32 -> Int -> AnyPtr -> PrimIO AnyPtr
+
+-- libc, not rc2base's `System.IO.MemStream`: a Chez build has no rc2
+-- toolchain to provide rc2base's C library (doc/memstream-capture.md).
+%foreign "C:open_memstream,libc,stdio.h"
+prim__openMemstream : CellPtr -> CellI64 -> PrimIO AnyPtr
+
+%foreign "C:fclose,libc,stdio.h"
+prim__fclose : AnyPtr -> PrimIO Int
+
+%foreign "C:free,libc,stdlib.h"
+prim__freeRaw : AnyPtr -> PrimIO ()
+
+%foreign "C:memcpy,libc,string.h"
+prim__memcpyToBuffer : Buffer -> AnyPtr -> Int -> PrimIO AnyPtr
 
 ------------------------------------------------------------------------
 -- Global init/cleanup
@@ -693,36 +709,46 @@ curlEasyNextheader h origin request prev = do
 -- Response-body capture
 ------------------------------------------------------------------------
 
--- `CURLOPT_WRITEDATA` pointed at an `open_memstream(3)` stream makes
--- libcurl's default writer capture the body with no callback; see
--- doc/memstream-capture.md.
-performCapture : HasIO io => (MemStream -> IO (Maybe a)) -> AnyPtr -> io (Maybe (CURLcode, a))
-performCapture read h = do
-    Just ms <- liftIO MemStream.newMemStream
-        | Nothing => pure Nothing
-    fp <- liftIO (MemStream.filePtr ms)
-    MkCURLcode 0 <- curlEasySetoptPointer h curlopt_WRITEDATA fp
-        | _ => do liftIO (MemStream.free ms)
-                  pure Nothing
-    result <- curlEasyPerform h
-    liftIO (MemStream.close ms)
-    body <- liftIO (read ms)
-    liftIO (MemStream.free ms)
-    pure (map (result,) body)
+||| Performs the transfer with `CURLOPT_WRITEDATA` pointed at an
+||| `open_memstream(3)` stream, then hands `read` the captured body's
+||| NUL-terminated bytes and length, both valid only until `read`
+||| returns (doc/memstream-capture.md). The building block for
+||| `curlEasyPerformToBuffer`/`ToString` and for other targets such as
+||| `curl-rc2`'s `TextBuffer`.
+export
+curlEasyPerformCapture : HasIO io => (AnyPtr -> Int -> IO (Maybe a)) -> AnyPtr -> io (Maybe (CURLcode, a))
+curlEasyPerformCapture read h =
+    withCell (prim__newCellPtr 8) prim__freeCellPtr $ \bufCell =>
+    withCell (prim__newCellI64 8) prim__freeCellI64 $ \sizeCell => do
+        Just fp <- nonNull <$> primIO (prim__openMemstream bufCell sizeCell)
+            | Nothing => pure Nothing
+        MkCURLcode 0 <- curlEasySetoptPointer h curlopt_WRITEDATA fp
+            | _ => do _ <- primIO (prim__fclose fp)
+                      primIO (prim__freeRaw (getField bufCell "v"))
+                      pure Nothing
+        result <- curlEasyPerform h
+        _ <- primIO (prim__fclose fp)
+        raw <- pure (the AnyPtr (getField bufCell "v"))
+        size <- pure (cast {to = Int} (the Int64 (getField sizeCell "v")))
+        body <- liftIO (read raw size)
+        primIO (prim__freeRaw raw)
+        pure (map (result,) body)
 
 ||| Performs the transfer, capturing the body. `Nothing` only when the
 ||| capture itself fails; a transfer failure comes back as the
-||| `CURLcode` alongside whatever body was received.
+||| `CURLcode` alongside whatever body was received. `h`'s
+||| `CURLOPT_WRITEDATA` is left pointing at the closed stream: set it
+||| again before performing on `h` without capture.
 export
 curlEasyPerformToBuffer : HasIO io => AnyPtr -> io (Maybe (CURLcode, Buffer))
-curlEasyPerformToBuffer = performCapture MemStream.toBuffer
+curlEasyPerformToBuffer = curlEasyPerformCapture $ \raw, size => do
+    Just buf <- newBuffer size
+        | Nothing => pure Nothing
+    _ <- primIO (prim__memcpyToBuffer buf raw size)
+    pure (Just buf)
 
 ||| Same as `curlEasyPerformToBuffer`; the body is cut at its first NUL.
 export
 curlEasyPerformToString : HasIO io => AnyPtr -> io (Maybe (CURLcode, String))
-curlEasyPerformToString = performCapture MemStream.toString
+curlEasyPerformToString = curlEasyPerformCapture $ \raw, _ => pure (ptrToString raw)
 
-||| Same as `curlEasyPerformToBuffer`, as a `TextBuffer` (rc2-only).
-export
-curlEasyPerformToTextBuffer : HasIO io => AnyPtr -> io (Maybe (CURLcode, TextBuffer))
-curlEasyPerformToTextBuffer = performCapture MemStream.toTextBuffer

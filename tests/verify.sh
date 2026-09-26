@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Builds and installs idris2-curl, then compiles every tests/src/*.idr
-# program on Chez and rc2, runs it and diffs its output against
-# tests/expected/<name>.out. Artifacts stay under tests/build/.
+# Builds and installs idris2-curl (`curl`, and the rc2-only `curl-rc2`),
+# then compiles every tests/src/*.idr program on Chez and rc2, runs it
+# and diffs its output against tests/expected/<name>.out. Artifacts
+# stay under tests/build/
 #
 # Needs ../idris2-rc-cg built (its env.sh and rc2 binary); gcc/gmp/
 # curl/python3 come from nix-shell. No outbound network: transfers use
 # file:// and a python3 http.server bound to 127.0.0.1.
 #
 # One test by hand (from tests/, inside the same nix-shell):
-#   idris2 -p curl -p rc2base --build-dir build/chez/work/TestUrl \
+#   idris2 -p curl --build-dir build/chez/work/TestUrl \
 #     --output-dir build/chez/bin -o TestUrl src/TestUrl.idr
 #   ./build/chez/bin/TestUrl
 # (rc2: ../../idris2-rc-cg/rc2/build/exec/idris2-rc2 --cg rc2 ...)
@@ -27,7 +28,7 @@ export LD_LIBRARY_PATH="$(pkg-config --variable=libdir libcurl):${LD_LIBRARY_PAT
 rm -rf build
 mkdir -p build
 
-if ! (cd .. && idris2 --install package.ipkg) > build/install.log 2>&1; then
+if ! (cd .. && idris2 --install package.ipkg && idris2 --install curl-rc2.ipkg) > build/install.log 2>&1; then
   cat build/install.log
   echo "FAIL: install"
   exit 1
@@ -51,11 +52,18 @@ TESTS=(
   "TestGetinfo $DATA"
   "TestMulti $DATA"
   "TestHttp http://127.0.0.1:$PORT/hello.txt"
+  "TestCapture $DATA"
+  "TestCaptureText $DATA"
+  "TestFetch http://127.0.0.1:$PORT"
 )
+# Data.TextBuffer is an rc2 runtime type; these also get curl-rc2.
+RC2_ONLY=" TestCaptureText "
 
 compile() {
   local be="$1" name="$2"
-  local opts=(-p curl -p rc2base --build-dir "build/$be/work/$name" --output-dir "build/$be/bin" -o "$name" "src/$name.idr")
+  local pkgs=(-p curl)
+  [[ "$RC2_ONLY" == *" $name "* ]] && pkgs+=(-p curl-rc2 -p rc2base)
+  local opts=("${pkgs[@]}" --build-dir "build/$be/work/$name" --output-dir "build/$be/bin" -o "$name" "src/$name.idr")
   case "$be" in
     chez) idris2 "${opts[@]}" ;;
     rc2)  "$RC2" --cg rc2 "${opts[@]}" ;;
@@ -66,7 +74,9 @@ pass=0
 fail=0
 for t in "${TESTS[@]}"; do
   read -r name args <<< "$t"
-  for be in chez rc2; do
+  backends="chez rc2"
+  [[ "$RC2_ONLY" == *" $name "* ]] && backends="rc2"
+  for be in $backends; do
     out="build/$be/$name.out"
     if ! compile "$be" "$name" > "build/$be-$name.compile.log" 2>&1; then
       echo "FAIL: $name ($be) compile, see build/$be-$name.compile.log"

@@ -6,7 +6,7 @@ brief   = "Minimal, dependency-free libcurl FFI bindings for Idris2"
 
 sourcedir = "src"
 
-depends = base, contrib, rc2base
+depends = base, contrib
 
 modules = Network.Curl.Fetch,
           Network.Curl.Raw,

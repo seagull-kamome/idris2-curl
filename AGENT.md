@@ -18,10 +18,12 @@ C codegen backend, not just the default Chez backend.
 
 ## Layout
 
-- `package.ipkg` — library package (`depends = base, contrib,
-  rc2base`; `rc2base` -- `idris2-rc-cg`'s own runtime helper library,
-  checked out as a sibling repo -- supplies `Data.String.FFI.ptrToString`
-  and the `System.IO.MemStream` body capture)
+- `package.ipkg` — the `curl` package (`depends = base, contrib`, nothing
+  else: a Chez user may have no rc2 toolchain, and installing rc2base
+  needs one)
+- `curl-rc2.ipkg` / `src-rc2/` — the rc2-only `curl-rc2` package
+  (`depends = base, curl, rc2base`): `Network.Curl.TextBuffer`, body
+  capture into rc2base's `TextBuffer`
 - `src/Network/Curl/Types.idr` — `CURLcode`/`CURLoption` wrapper
   records and hand-written constants (no `%runElab` deriving)
 - `src/Network/Curl/Raw.idr` — direct `%foreign "C:curl_*,libcurl,curl/curl.h"`
@@ -33,9 +35,8 @@ C codegen backend, not just the default Chez backend.
   `post`/`request`)
 - `examples/` — small standalone programs using the bindings. Most
   talk to `example.com`, so they are run by hand, not by
-  `tests/verify.sh`. All build on both backends; the body-capture ones
-  (`GetCapture.idr`, `GetCaptureText.idr`, `Fetch.idr`) only run on
-  rc2 (`doc/memstream-capture.md`)
+  `tests/verify.sh`. All build and run on both backends, except
+  `GetCaptureText.idr` (rc2 only, needs `-p curl-rc2 -p rc2base`)
 - `tests/` — `verify.sh` plus network-free regression programs
   (`src/`), their expected output (`expected/`) and fixtures (`data/`)
 - `doc/` — implementation deep-dives, meant to let a future session
@@ -43,8 +44,8 @@ C codegen backend, not just the default Chez backend.
   `ffi-without-shims.md` (how every binding avoids a C shim on both
   backends), `int-width-pitfall.md` (why a negative/sentinel `Int`
   `%foreign` argument such as `CURL_ZERO_TERMINATED` isn't safe on
-  Chez), `memstream-capture.md` (capturing a response body without
-  `CURLOPT_WRITEFUNCTION`)
+  Chez), `memstream-capture.md` (capturing a response body through
+  libc's `open_memstream`, without `CURLOPT_WRITEFUNCTION`)
 - `TODO.md` — open gaps and deferred design decisions (removed once
   implemented and documented elsewhere)
 
@@ -93,18 +94,19 @@ list on Chez and rc2 against `tests/expected/`. How to run a single test by
 hand is in its header comment.
 
 Every backend runs against `idris2-rc-cg`'s own self-built toolchain
-(checked out as a sibling directory and built, `rc2base` included);
+(checked out as a sibling directory and built);
 sourcing its `env.sh` puts that `idris2` first on `PATH`, and its
 default prefix (`../idris2-rc-cg/install`) already holds `base`/
-`contrib`/`rc2base` -- no `IDRIS2_PREFIX`/`IDRIS2_PACKAGE_PATH`
+`contrib` -- no `IDRIS2_PREFIX`/`IDRIS2_PACKAGE_PATH`
 override is needed. Installing needs no libcurl; compiling an example
 does (`nix-shell -p gcc gmp pkg-config curl`):
 ```sh
 source ../idris2-rc-cg/env.sh
 idris2 --install package.ipkg
+idris2 --install curl-rc2.ipkg    # rc2 only; needs rc2base
 export IDRIS2_LDFLAGS="$(pkg-config --libs-only-L libcurl)"
-idris2 -p curl -p rc2base -o get examples/Get.idr
-../idris2-rc-cg/rc2/build/exec/idris2-rc2 --cg rc2 -p curl -p rc2base -o get_rc2 examples/Get.idr
+idris2 -p curl -o get examples/Get.idr
+../idris2-rc-cg/rc2/build/exec/idris2-rc2 --cg rc2 -p curl -o get_rc2 examples/Get.idr
 ```
 Run the result with `LD_LIBRARY_PATH="$(pkg-config --variable=libdir
 libcurl)"` -- nix's libcurl isn't on the default runtime search path.

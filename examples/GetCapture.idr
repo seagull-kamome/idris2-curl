@@ -3,16 +3,8 @@ module Main
 -- Copyright 2026, Hattori,Hiroki. All rights reserved.
 -- This module was licensed by BSD3.
 
--- rc2-only: captures a response body into Idris without ever
--- binding CURLOPT_WRITEFUNCTION, via curlEasyPerformToBuffer/
--- curlEasyPerformToString -- see doc/memstream-capture.md and
--- Network.Curl.Raw's own doc comment on curlEasyPerformToBuffer.
--- Building this against Chez fails cleanly at this file's own call
--- sites -- expected, not a regression. Only the Buffer/String
--- conversions -- examples/GetCaptureText.idr exercises
--- curlEasyPerformToTextBuffer separately, since Data.TextBuffer's own
--- rc2base implementation needs rc2's own runtime headers
--- (rc2/datatypes.h) and so is rc2-only, unlike everything else here.
+-- Captures a response body into a Buffer and a String without
+-- CURLOPT_WRITEFUNCTION (doc/memstream-capture.md).
 
 import Data.Buffer
 

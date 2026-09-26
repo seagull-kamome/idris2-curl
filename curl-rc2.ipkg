@@ -1,0 +1,13 @@
+package curl-rc2
+
+version = 0.1.0
+authors = "idris2-curl minimal reimplementation"
+brief   = "rc2-only additions to curl: capture into rc2base's TextBuffer"
+
+sourcedir = "src-rc2"
+
+-- Kept out of `curl` itself: installing rc2base needs the rc2
+-- toolchain, which a Chez-only user doesn't have.
+depends = base, curl, rc2base
+
+modules = Network.Curl.TextBuffer

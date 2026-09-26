@@ -49,7 +49,7 @@ Type-checks the library against the default Chez backend only (using
 `env.sh`, sourced above — not nix's `idris2` package). To actually
 compile an example against it, the library must also be installed to a
 default prefix first (`../idris2-rc-cg/install`, the same prefix
-that already holds `base`/`contrib`/`rc2base` -- no `IDRIS2_PREFIX`/`IDRIS2_PACKAGE_PATH` override needed):
+that already holds `base`/`contrib` -- no `IDRIS2_PREFIX`/`IDRIS2_PACKAGE_PATH` override needed):
 
 ```bash
 nix-shell -p gcc gmp pkg-config curl --run \
@@ -83,7 +83,7 @@ outbound HTTP, so only do this outside a sandboxed agent run):
 
 ```bash
 source ../idris2-rc-cg/env.sh
-idris2 -p curl -p rc2base -o get examples/Get.idr
+idris2 -p curl -o get examples/Get.idr
 nix-shell -p gcc gmp curl pkg-config --run \
   'export LD_LIBRARY_PATH="$(pkg-config --variable=libdir libcurl):${LD_LIBRARY_PATH:-}"; ./build/exec/get'
 ```
@@ -103,7 +103,7 @@ plus a local python3 http.server) built and diffed on Chez and rc2.
   `pkg-config --libs-only-L`. Always run compiled binaries with
   `LD_LIBRARY_PATH="$(pkg-config --variable=libdir libcurl):$LD_LIBRARY_PATH"`
   (`smoke.sh` does this).
-- **Omitting `-p curl -p rc2base`** when compiling an
+- **Omitting `-p curl`** when compiling an
   example produces module-not-found or missing-header errors — both
   are required every time, on every backend, they're not implied by
   the library install step.

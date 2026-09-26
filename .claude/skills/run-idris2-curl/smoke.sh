@@ -67,14 +67,14 @@ run_and_check() {
 build_chez() {
   echo "== compiling UrlAndEscape.idr (Chez) =="
   nix-shell -p gcc gmp pkg-config curl --run \
-    "source '$RC2CG_ENV'; idris2 -p curl -p rc2base -o smoke_urlget_chez examples/UrlAndEscape.idr"
+    "source '$RC2CG_ENV'; idris2 -p curl -o smoke_urlget_chez examples/UrlAndEscape.idr"
   run_and_check chez "$UNIT_DIR/build/exec/smoke_urlget_chez"
 }
 
 build_refc() {
   echo "== compiling UrlAndEscape.idr (RefC) =="
   nix-shell -p gcc gmp pkg-config curl --run \
-    "source '$RC2CG_ENV'; export IDRIS2_LDLIBS=\"\$(pkg-config --libs libcurl)\"; idris2 --cg refc -p curl -p rc2base -o smoke_urlget_refc examples/UrlAndEscape.idr"
+    "source '$RC2CG_ENV'; export IDRIS2_LDLIBS=\"\$(pkg-config --libs libcurl)\"; idris2 --cg refc -p curl -o smoke_urlget_refc examples/UrlAndEscape.idr"
   run_and_check refc "$UNIT_DIR/build/exec/smoke_urlget_refc"
 }
 
@@ -86,7 +86,7 @@ build_rc2() {
   fi
   echo "== compiling UrlAndEscape.idr (rc2) =="
   nix-shell -p gcc gmp pkg-config curl --run \
-    "source '$RC2CG_ENV'; export IDRIS2_LDFLAGS=\"\$(pkg-config --libs-only-L libcurl)\"; '$rc2_bin' --cg rc2 -p curl -p rc2base -o smoke_urlget_rc2 examples/UrlAndEscape.idr"
+    "source '$RC2CG_ENV'; export IDRIS2_LDFLAGS=\"\$(pkg-config --libs-only-L libcurl)\"; '$rc2_bin' --cg rc2 -p curl -o smoke_urlget_rc2 examples/UrlAndEscape.idr"
   run_and_check rc2 "$UNIT_DIR/build/exec/smoke_urlget_rc2"
 }
 

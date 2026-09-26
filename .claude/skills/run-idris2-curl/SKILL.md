@@ -4,7 +4,7 @@ description: Build idris2-curl (minimal libcurl FFI bindings for Idris2), instal
 ---
 
 `idris2-curl` is a library, not an app — "running" it means building
-it, installing it into a local package prefix, and compiling one of
+it, installing it, and compiling one of
 `examples/*.idr` against it on a real backend, then running the
 resulting native binary. Drive it via
 `.claude/skills/run-idris2-curl/smoke.sh`, which does exactly that
@@ -35,8 +35,7 @@ a sibling directory and already built (see that repo's own
 
 ## Setup
 
-No manual setup step — `smoke.sh` builds and locally installs the
-library itself (`IDRIS2_PREFIX="$(pwd)/.local-install"`, gitignored).
+No manual setup step — `smoke.sh` builds and installs the library itself.
 
 ## Build
 
@@ -49,12 +48,12 @@ Type-checks the library against the default Chez backend only (using
 `idris2-rc-cg`'s own self-built `idris2`, put first on `PATH` by its
 `env.sh`, sourced above — not nix's `idris2` package). To actually
 compile an example against it, the library must also be installed to a
-local prefix first (the default install location is a read-only nix
-store path here):
+default prefix first (`../idris2-rc-cg/install`, the same prefix
+that already holds `base`/`contrib`/`rc2base` -- no `IDRIS2_PREFIX`/`IDRIS2_PACKAGE_PATH` override needed):
 
 ```bash
 nix-shell -p gcc gmp pkg-config curl --run \
-  "IDRIS2_PREFIX='$(pwd)/.local-install' idris2 --install package.ipkg"
+  'idris2 --install package.ipkg'
 ```
 
 `smoke.sh` does both of the above automatically (sourcing
@@ -84,17 +83,16 @@ outbound HTTP, so only do this outside a sandboxed agent run):
 
 ```bash
 source ../idris2-rc-cg/env.sh
-export IDRIS2_CFLAGS="-Icsrc"
-IDRIS2_PREFIX="$(pwd)/.local-install" idris2 -p curl -o get examples/Get.idr
+idris2 -p curl -p rc2base -o get examples/Get.idr
 nix-shell -p gcc gmp curl pkg-config --run \
   'export LD_LIBRARY_PATH="$(pkg-config --variable=libdir libcurl):${LD_LIBRARY_PATH:-}"; ./build/exec/get'
 ```
 
 ## Test
 
-No `tests/verify.sh` yet (per `AGENT.md`: too few regression tests so
-far to justify one) — `smoke.sh --backend=all` above is the closest
-thing to a test suite today.
+`tests/verify.sh` is the regression suite: network-free tests (file://
+plus a local python3 http.server) built and diffed on Chez and rc2.
+`smoke.sh` remains a quick single-example check.
 
 ## Gotchas
 
@@ -105,7 +103,7 @@ thing to a test suite today.
   `pkg-config --libs-only-L`. Always run compiled binaries with
   `LD_LIBRARY_PATH="$(pkg-config --variable=libdir libcurl):$LD_LIBRARY_PATH"`
   (`smoke.sh` does this).
-- **Omitting `-p curl` (or `IDRIS2_CFLAGS=-Icsrc`)** when compiling an
+- **Omitting `-p curl -p rc2base`** when compiling an
   example produces module-not-found or missing-header errors — both
   are required every time, on every backend, they're not implied by
   the library install step.

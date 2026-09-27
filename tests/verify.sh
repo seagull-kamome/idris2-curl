@@ -94,7 +94,9 @@ for t in "${TESTS[@]}"; do
   [[ "$RC2_ONLY" == *" $name "* ]] && backends="rc2"
   for be in $backends; do
     out="build/$be/$name.out"
-    if ! compile "$be" "$name" > "build/$be-$name.compile.log" 2>&1; then
+    # The exit status alone misses a failed C compile: idris2 exits 0
+    # without an executable (idris2-rc-cg/KNOWN-BUGS.md).
+    if ! compile "$be" "$name" > "build/$be-$name.compile.log" 2>&1 || [ ! -x "build/$be/bin/$name" ]; then
       echo "FAIL: $name ($be) compile, see build/$be-$name.compile.log"
       fail=$((fail + 1))
       continue

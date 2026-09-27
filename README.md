@@ -70,6 +70,21 @@ smaller easy-interface gaps).
 per request, no `curl_global_init`/`curl_easy_init`/setopt/`curl_slist`
 bookkeeping of your own. Works on both backends. `examples/Fetch.idr` exercises it end to end.
 
+## `webapi` -- clients for web APIs
+
+A separate package, `webapi.ipkg` (`src-webapi/`), built on
+`Network.Curl.Fetch` only:
+
+- `Network.WebAPI.AI.OpenAI` -- OpenAI-compatible chat completions,
+  with `Network.WebAPI.AI.Providers` endpoints for Claude, Gemini and
+  llama.cpp (API keys, or Google OAuth for Gemini).
+- `Network.WebAPI.Auth.OAuth2` -- authorization code with PKCE and a
+  loopback redirect, falling back to a pasted URL; token refresh and a
+  token file.
+
+Setup and credentials: `doc/webapi-getting-started.md`. Design:
+`doc/webapi.md`.
+
 ## Backends
 
 Verified end-to-end (a real HTTP GET against `example.com`) on:

@@ -80,3 +80,17 @@ matching `Network.Curl.Raw` `curlEasyGetinfo*` function and at least
 one bound constant each -- `off_t` is represented as `Int64`
 (`curl_off_t` is always a real 64-bit signed integer in libcurl
 itself, independent of the host platform's own `long` width).
+
+## `webapi`: what the first version leaves out
+
+- **Streaming replies** (`"stream": true`, server-sent events) need the
+  body as it arrives, which `Network.Curl.Fetch` can't give until
+  libcurl's callback options are bound (see above).
+- **Tool calls, images and other message parts.** `Message.content` is
+  a plain string; a tool-call-only reply decodes with empty content.
+- **An HTTP interface of our own.** `webapi` calls `Network.Curl.Fetch`
+  directly, keeping to its shape so that the calls can later go
+  through an interface (or another library) without changing the
+  public API.
+- **Claude through Bedrock or Vertex AI**, for signing in without an
+  API key: neither is OpenAI-compatible, so each needs its own module.

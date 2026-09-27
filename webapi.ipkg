@@ -1,0 +1,17 @@
+package webapi
+
+version = 0.1.0
+authors = "idris2-curl minimal reimplementation"
+brief   = "Clients for web APIs (OpenAI-compatible chat, OAuth 2.0) over curl"
+
+sourcedir = "src-webapi"
+
+-- Only Network.Curl.Fetch is used from curl, so another HTTP client
+-- with the same shape can replace it later.
+depends = base, contrib, network, curl
+
+modules = Network.WebAPI.JSON,
+          Network.WebAPI.AI.OpenAI,
+          Network.WebAPI.AI.Providers,
+          Network.WebAPI.Auth.OAuth2,
+          Network.WebAPI.Auth.PKCE

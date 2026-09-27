@@ -33,6 +33,10 @@ C codegen backend, not just the default Chez backend.
 - `src/Network/Curl/Fetch.idr` — a JS `fetch()`-shaped convenience
   layer built on `Raw.idr` (`fetch`/`fetchBytes`/`fetchText`/`get`/
   `post`/`request`)
+- `webapi.ipkg` / `src-webapi/` — the `webapi` package (`depends =
+  base, contrib, network, curl`): web API clients under
+  `Network.WebAPI.<category>.<API>`, using only `Network.Curl.Fetch`
+  from curl. See `doc/webapi.md`
 - `examples/` — small standalone programs using the bindings. Most
   talk to `example.com`, so they are run by hand, not by
   `tests/verify.sh`. All build and run on both backends, except
@@ -45,7 +49,9 @@ C codegen backend, not just the default Chez backend.
   backends), `int-width-pitfall.md` (why a negative/sentinel `Int`
   `%foreign` argument such as `CURL_ZERO_TERMINATED` isn't safe on
   Chez), `memstream-capture.md` (capturing a response body through
-  libc's `open_memstream`, without `CURLOPT_WRITEFUNCTION`)
+  libc's `open_memstream`, without `CURLOPT_WRITEFUNCTION`),
+  `webapi.md` (the `webapi` package's design), `webapi-getting-started.md`
+  (installing it and getting credentials for each service)
 - `TODO.md` — open gaps and deferred design decisions (removed once
   implemented and documented elsewhere)
 

@@ -28,7 +28,7 @@ export LD_LIBRARY_PATH="$(pkg-config --variable=libdir libcurl):${LD_LIBRARY_PAT
 rm -rf build
 mkdir -p build
 
-if ! (cd .. && idris2 --install package.ipkg && idris2 --install curl-rc2.ipkg) > build/install.log 2>&1; then
+if ! (cd .. && idris2 --install package.ipkg && idris2 --install curl-rc2.ipkg && idris2 --install webapi.ipkg) > build/install.log 2>&1; then
   cat build/install.log
   echo "FAIL: install"
   exit 1
@@ -45,6 +45,17 @@ for _ in $(seq 50); do
 done
 [ -n "$PORT" ] || { cat build/http.log; echo "FAIL: http server"; exit 1; }
 
+python3 -u data/mock_api.py > build/mock.log 2>&1 &
+MOCK_PID=$!
+trap 'kill $HTTP_PID $MOCK_PID 2>/dev/null' EXIT
+MOCK=
+for _ in $(seq 50); do
+  MOCK="$(sed -n 's/^port \([0-9]*\)$/\1/p' build/mock.log)"
+  [ -n "$MOCK" ] && break
+  sleep 0.1
+done
+[ -n "$MOCK" ] || { cat build/mock.log; echo "FAIL: mock api server"; exit 1; }
+
 DATA="$(pwd)/data/hello.txt"
 TESTS=(
   "TestUrl"
@@ -55,14 +66,19 @@ TESTS=(
   "TestCapture $DATA"
   "TestCaptureText $DATA"
   "TestFetch http://127.0.0.1:$PORT"
+  "TestWebAPIPure"
+  "TestWebAPIChat http://127.0.0.1:$MOCK"
+  "TestWebAPILogin http://127.0.0.1:$MOCK"
 )
 # Data.TextBuffer is an rc2 runtime type; these also get curl-rc2.
 RC2_ONLY=" TestCaptureText "
+WEBAPI=" TestWebAPIPure TestWebAPIChat TestWebAPILogin "
 
 compile() {
   local be="$1" name="$2"
   local pkgs=(-p curl)
   [[ "$RC2_ONLY" == *" $name "* ]] && pkgs+=(-p curl-rc2 -p rc2base)
+  [[ "$WEBAPI" == *" $name "* ]] && pkgs+=(-p contrib -p network -p webapi)
   local opts=("${pkgs[@]}" --build-dir "build/$be/work/$name" --output-dir "build/$be/bin" -o "$name" "src/$name.idr")
   case "$be" in
     chez) idris2 "${opts[@]}" ;;
@@ -83,8 +99,13 @@ for t in "${TESTS[@]}"; do
       fail=$((fail + 1))
       continue
     fi
+    # A src/<name>.sh drives a test that needs more than arguments.
     # shellcheck disable=SC2086
-    "./build/$be/bin/$name" $args > "$out" 2>&1
+    if [ -x "src/$name.sh" ]; then
+      "src/$name.sh" "build/$be/bin/$name" $args > "$out" 2>&1
+    else
+      "./build/$be/bin/$name" $args > "$out" 2>&1
+    fi
     if diff -u "expected/$name.out" "$out" > "build/$be-$name.diff"; then
       echo "ok:   $name ($be)"
       pass=$((pass + 1))
